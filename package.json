@@ -1,12 +1,42 @@
 {
-  "name": "opencode-bat",
-  "module": "index.ts",
+  "name": "opencode-otel",
+  "version": "0.1.0",
+  "description": "OpenCode plugin for unified observability via OpenTelemetry — export session traces and logs to Langfuse, LangSmith, Jaeger, Grafana Tempo, or any OTLP backend",
   "type": "module",
-  "private": true,
+  "main": "dist/index.js",
+  "module": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsup src/index.ts --format esm --dts --external @opencode-ai",
+    "prepublishOnly": "bun run build"
+  },
+  "keywords": [
+    "opencode",
+    "opentelemetry",
+    "otel",
+    "observability",
+    "langfuse",
+    "langsmith",
+    "jaeger",
+    "tracing",
+    "plugin"
+  ],
+  "author": "NeverMore93",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/NeverMore93/opencode-otel.git"
+  },
   "devDependencies": {
-    "@types/bun": "latest"
+    "@types/bun": "latest",
+    "tsup": "^8.5.1"
   },
   "peerDependencies": {
+    "@opencode-ai/plugin": ">=1.1.0",
     "typescript": "^5"
   },
   "dependencies": {
