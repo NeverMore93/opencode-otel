@@ -1,7 +1,7 @@
-# dependencies (bun install)
+# dependencies
 node_modules
 
-# output
+# build output
 out
 dist
 *.tgz
@@ -12,23 +12,36 @@ coverage
 
 # logs
 logs
-_.log
-report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
+*.log
+report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
 
 # dotenv environment variable files
 .env
-.env.development.local
-.env.test.local
-.env.production.local
-.env.local
+.env.*
+!.env.example
 
 # caches
 .eslintcache
 .cache
 *.tsbuildinfo
 
-# IntelliJ based IDEs
+# IDEs & editors
 .idea
+.vscode
+*.swp
+*.swo
+*~
 
-# Finder (MacOS) folder config
+# OS metadata
 .DS_Store
+Thumbs.db
+Desktop.ini
+
+# Bun
+bun.lockb
+
+# Claude Code worktrees
+.claude/worktrees/
+
+# specs (development-only, not shipped)
+specs/
