@@ -6,6 +6,7 @@
  */
 
 import { hostname as osHostname } from 'node:os'
+import pkg from '../../package.json'
 import { resourceFromAttributes } from '@opentelemetry/resources'
 import {
   BasicTracerProvider,
@@ -36,7 +37,7 @@ export interface Providers {
 export function initProviders(config: OtelConfig): Providers {
   const resource = resourceFromAttributes({
     'service.name': config.serviceName,
-    'service.version': '0.1.0',
+    'service.version': pkg.version,
     'service.instance.id': `${getHostname()}-${process.pid}`,
   })
 

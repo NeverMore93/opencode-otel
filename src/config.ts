@@ -106,7 +106,7 @@ function toOptionalString(value: unknown): string | undefined {
  */
 function fileHeaders(raw: unknown): Record<string, string> {
   if (typeof raw === 'string') {
-    return { ...parseOtlpHeaders(raw) }
+    return parseOtlpHeaders(raw) as Record<string, string>
   }
   if (typeof raw === 'object' && raw !== null && !Array.isArray(raw)) {
     const result: Record<string, string> = {}

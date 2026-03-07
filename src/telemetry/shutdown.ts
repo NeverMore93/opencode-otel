@@ -31,17 +31,19 @@ export function registerShutdown(
     if (called) return
     called = true
 
-    const timer = setTimeout(() => {}, SHUTDOWN_TIMEOUT_MS)
+    let timeoutId: ReturnType<typeof setTimeout>
 
     try {
+      const timeoutPromise = new Promise<'timeout'>((resolve) => {
+        timeoutId = setTimeout(() => resolve('timeout'), SHUTDOWN_TIMEOUT_MS)
+      })
+
       const result = await Promise.race([
         Promise.all([
           tracerProvider.shutdown(),
           loggerProvider.shutdown(),
         ]).then(() => 'ok' as const),
-        new Promise<'timeout'>((resolve) =>
-          setTimeout(() => resolve('timeout'), SHUTDOWN_TIMEOUT_MS),
-        ),
+        timeoutPromise,
       ])
 
       if (result === 'timeout') {
@@ -50,7 +52,7 @@ export function registerShutdown(
     } catch (err) {
       logError(`opencode-otel shutdown error: ${err instanceof Error ? err.message : String(err)}`)
     } finally {
-      clearTimeout(timer)
+      clearTimeout(timeoutId!)
     }
   }
 
