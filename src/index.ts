@@ -53,21 +53,13 @@ export default async function plugin(ctx: PluginContext) {
 
     const { tracerProvider, loggerProvider } = initProviders(config)
 
-    registerShutdown(tracerProvider, loggerProvider, (msg) => {
-      logError(msg)
-    })
+    registerShutdown(tracerProvider, loggerProvider, logError)
 
-    const eventHook = createEventHook(tracerProvider, loggerProvider, (msg) => {
-      logError(msg)
-    })
+    const eventHook = createEventHook(tracerProvider, loggerProvider, logError)
 
-    const chatMessageHook = createChatMessageHook(tracerProvider, (msg) => {
-      logError(msg)
-    })
+    const chatMessageHook = createChatMessageHook(tracerProvider, logError)
 
-    const toolHooks = createToolExecuteHooks(tracerProvider, (msg) => {
-      logError(msg)
-    })
+    const toolHooks = createToolExecuteHooks(tracerProvider, logError)
 
     const backends = [
       config.tracesEndpoint ? 'traces' : null,
