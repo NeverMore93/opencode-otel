@@ -95,14 +95,7 @@ function handleSessionCreated(
  */
 function handleSessionEnd(sessionID: string): void {
   if (sessionID === '') return
-
-  const session = getSession(sessionID)
-  // endSession cleans up message/tool orphans and deletes from the map.
   endSession(sessionID)
-
-  if (session !== undefined) {
-    session.rootSpan.end()
-  }
 }
 
 /**
