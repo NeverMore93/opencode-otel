@@ -26,9 +26,8 @@ export function createSession(
   traceCtx: Context,
   rootSpan: Span,
 ): void {
-  const existing = sessions.get(sessionID)
-  if (existing !== undefined) {
-    existing.rootSpan.end()
+  if (sessions.has(sessionID)) {
+    endSession(sessionID)
   }
   sessions.set(sessionID, {
     traceCtx,
