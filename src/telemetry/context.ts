@@ -87,7 +87,10 @@ export function removeToolSpan(
  * Tear down a session:
  * 1. End the active messageSpan (if any).
  * 2. End every orphaned pendingTool span with ERROR status.
- * 3. Remove the session from the map.
+ * 3. End the root span.
+ * 4. Remove the session from the map.
+ *
+ * Calling .end() on an already-ended span is a safe no-op in OTEL SDK.
  */
 export function endSession(sessionID: string): void {
   const session = sessions.get(sessionID)
@@ -102,5 +105,6 @@ export function endSession(sessionID: string): void {
     toolSpan.end()
   }
 
+  session.rootSpan.end()
   sessions.delete(sessionID)
 }
