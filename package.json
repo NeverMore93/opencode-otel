@@ -6,12 +6,19 @@
   "main": "dist/index.js",
   "module": "dist/index.js",
   "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
   "files": [
     "dist",
     "README.md"
   ],
   "scripts": {
-    "build": "tsup src/index.ts --format esm --dts --external @opencode-ai",
+    "build": "tsup src/index.ts --format esm --dts --clean --external @opencode-ai",
+    "test": "bun test",
     "prepublishOnly": "bun run build"
   },
   "keywords": [
@@ -32,17 +39,19 @@
     "url": "https://github.com/NeverMore93/opencode-otel.git"
   },
   "devDependencies": {
-    "@types/bun": "latest",
-    "tsup": "^8.5.1"
+    "@types/bun": "^1.2.0",
+    "tsup": "^8.5.1",
+    "typescript": "^5.5.0"
   },
   "peerDependencies": {
-    "@opencode-ai/plugin": ">=1.1.0",
-    "typescript": "^5"
+    "@opencode-ai/plugin": ">=1.1.0"
   },
   "dependencies": {
     "@opentelemetry/api": "^1.9.0",
+    "@opentelemetry/exporter-logs-otlp-http": "^0.212.0",
     "@opentelemetry/exporter-trace-otlp-http": "^0.212.0",
     "@opentelemetry/resources": "^2.5.1",
+    "@opentelemetry/sdk-logs": "^0.212.0",
     "@opentelemetry/sdk-trace-base": "^2.5.1"
   }
 }
