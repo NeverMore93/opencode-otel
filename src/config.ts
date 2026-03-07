@@ -104,9 +104,9 @@ function toOptionalString(value: unknown): string | undefined {
  * Merge file-level headers (object or string) into a plain record.
  * Invalid shapes are silently ignored.
  */
-function fileHeaders(raw: unknown): Record<string, string> {
+function fileHeaders(raw: unknown): OtelHeaders {
   if (typeof raw === 'string') {
-    return parseOtlpHeaders(raw) as Record<string, string>
+    return parseOtlpHeaders(raw)
   }
   if (typeof raw === 'object' && raw !== null && !Array.isArray(raw)) {
     const result: Record<string, string> = {}
@@ -115,9 +115,9 @@ function fileHeaders(raw: unknown): Record<string, string> {
         result[k] = v
       }
     }
-    return result
+    return Object.freeze(result)
   }
-  return {}
+  return Object.freeze({})
 }
 
 /**
@@ -151,7 +151,7 @@ export async function loadConfig(): Promise<OtelConfig> {
   const headers: OtelHeaders =
     rawEnvHeaders !== undefined
       ? parseOtlpHeaders(rawEnvHeaders)
-      : Object.freeze(fileHeaders(fileConfig?.headers))
+      : fileHeaders(fileConfig?.headers)
 
   return Object.freeze({
     tracesEndpoint,
