@@ -31,7 +31,7 @@ export function registerShutdown(
     if (called) return
     called = true
 
-    let timeoutId: ReturnType<typeof setTimeout>
+    let timeoutId: ReturnType<typeof setTimeout> | undefined
 
     try {
       const timeoutPromise = new Promise<'timeout'>((resolve) => {
@@ -52,7 +52,7 @@ export function registerShutdown(
     } catch (err) {
       logError(`opencode-otel shutdown error: ${err instanceof Error ? err.message : String(err)}`)
     } finally {
-      clearTimeout(timeoutId!)
+      clearTimeout(timeoutId)
     }
   }
 
