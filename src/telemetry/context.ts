@@ -26,6 +26,10 @@ export function createSession(
   traceCtx: Context,
   rootSpan: Span,
 ): void {
+  const existing = sessions.get(sessionID)
+  if (existing !== undefined) {
+    existing.rootSpan.end()
+  }
   sessions.set(sessionID, {
     traceCtx,
     rootSpan,
@@ -46,6 +50,9 @@ export function getSession(sessionID: string): SessionContext | undefined {
 export function setMessageSpan(sessionID: string, span: Span): void {
   const session = sessions.get(sessionID)
   if (session === undefined) return
+  if (session.messageSpan !== undefined) {
+    session.messageSpan.end()
+  }
   session.messageSpan = span
 }
 

@@ -60,8 +60,9 @@ export function parseOtlpHeaders(raw: string): OtelHeaders {
     if (key === '') {
       return acc
     }
-    return { ...acc, [key]: value }
-  }, {})
+    acc[key] = value
+    return acc
+  }, {} as Record<string, string>)
 
   return Object.freeze(entries)
 }

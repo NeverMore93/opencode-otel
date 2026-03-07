@@ -30,25 +30,18 @@ interface PluginContext {
  * capture. If initialization fails, returns empty hooks (graceful degradation).
  */
 export default async function plugin(ctx: PluginContext) {
-  const logError = async (message: string) => {
+  const log = (level: 'info' | 'error') => async (message: string) => {
     try {
       await ctx.client.app.log({
-        body: { service: 'opencode-otel', level: 'error', message },
+        body: { service: 'opencode-otel', level, message },
       })
     } catch {
-      // Last resort — cannot log, silently drop
+      // Silently drop — cannot log
     }
   }
 
-  const logInfo = async (message: string) => {
-    try {
-      await ctx.client.app.log({
-        body: { service: 'opencode-otel', level: 'info', message },
-      })
-    } catch {
-      // Silently drop
-    }
-  }
+  const logError = log('error')
+  const logInfo = log('info')
 
   try {
     const config = await loadConfig()
