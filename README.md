@@ -1,37 +1,61 @@
 # opencode-otel
 
-OpenCode plugin for unified observability via OpenTelemetry — export session traces and logs to any OTLP-compatible backend (Jaeger, Grafana Tempo, Datadog, etc.).
+[![npm](https://img.shields.io/npm/v/opencode-otel)](https://www.npmjs.com/package/opencode-otel)
 
-## Features
+[OpenCode](https://opencode.ai) observability plugin — export session traces and logs to any OTLP-compatible backend (Jaeger, Grafana Tempo, Datadog, etc.) via OpenTelemetry.
 
-- Session lifecycle tracking (created → idle/deleted) as root spans
-- Chat message spans with agent/model attributes
-- Tool execution spans with timing and status
-- Event log records with severity mapping
-- Privacy by default — no message text, file contents, or credentials captured
-- Graceful degradation — plugin errors never affect OpenCode
+## Quick Start
 
-## Installation
+### 1. Configure OpenCode to Load the Plugin
 
-Add to your OpenCode config (`.opencode/opencode.json`):
+Add to `~/.config/opencode/opencode.json`:
 
 ```json
 {
-  "experimental": { "openTelemetry": true },
-  "plugin": ["opencode-otel@0.1.1"]
+  "plugin": ["opencode-otel"]
 }
 ```
 
-## Configuration
-
-Set environment variables for your OTEL backend:
+### 2. Set OTEL Backend Endpoints
 
 ```bash
 export OTEL_EXPORTER_OTLP_TRACES_ENDPOINT=http://localhost:4318/v1/traces
 export OTEL_EXPORTER_OTLP_LOGS_ENDPOINT=http://localhost:4318/v1/logs
-export OTEL_SERVICE_NAME=opencode-agent  # optional, default: opencode-agent
-export OTEL_EXPORTER_OTLP_HEADERS="Authorization=Bearer token"  # optional
 ```
+
+### 3. Start OpenCode
+
+```bash
+opencode
+```
+
+The plugin auto-initializes and begins exporting traces and logs.
+
+## Configuration
+
+All configuration via environment variables (or optional `.opencode/plugins/otel.json`):
+
+| Env Variable | Required | Default | Description |
+|-------------|:--------:|---------|-------------|
+| `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` | No | — | OTLP HTTP endpoint for traces |
+| `OTEL_EXPORTER_OTLP_LOGS_ENDPOINT` | No | — | OTLP HTTP endpoint for logs |
+| `OTEL_SERVICE_NAME` | No | `opencode-agent` | `service.name` resource attribute |
+| `OTEL_EXPORTER_OTLP_HEADERS` | No | — | Comma-separated `key=value` headers |
+
+At least one endpoint must be set for the plugin to activate. If neither is configured, the plugin stays inactive (no overhead).
+
+Optional config file `~/.config/opencode/plugins/otel.json`:
+
+```json
+{
+  "tracesEndpoint": "http://localhost:4318/v1/traces",
+  "logsEndpoint": "http://localhost:4318/v1/logs",
+  "serviceName": "my-agent",
+  "headers": { "Authorization": "Bearer token" }
+}
+```
+
+Environment variables always take precedence over config file values.
 
 ## Trace Structure
 
@@ -55,18 +79,23 @@ Session events are emitted as OTEL log records with severity mapping:
 
 High-frequency events (`message.part.updated`) are filtered out by default.
 
+## Features
+
+- **Full trace hierarchy** — session → message → tool call spans with correct parent-child relationships
+- **Structured log records** — all session events with severity mapping
+- **Privacy by default** — no message text, file contents, or credentials captured
+- **Graceful degradation** — plugin errors never affect OpenCode
+- **Zero-config bootstrap** — reads standard `OTEL_EXPORTER_OTLP_*` env vars
+- **Bun-compatible** — works around Bun's broken AsyncLocalStorage with explicit context map
+
 ## Development
 
 ```bash
-bun install
-bun test           # 107 tests
-bun test --coverage # 97%+ coverage
-bun run build      # ESM bundle → dist/
+bun install             # Install dependencies
+bun test                # Run 107 tests
+bun test --coverage     # 97%+ coverage
+bun run build           # ESM bundle → dist/
 ```
-
-## Runtime
-
-Bun v1.3.9+ (TypeScript)
 
 ## License
 
