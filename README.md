@@ -18,7 +18,7 @@ Add to your OpenCode config (`.opencode/opencode.json`):
 ```json
 {
   "experimental": { "openTelemetry": true },
-  "plugin": ["opencode-otel@0.1.0"]
+  "plugin": ["opencode-otel@0.1.1"]
 }
 ```
 
