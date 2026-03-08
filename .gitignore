@@ -43,5 +43,38 @@ bun.lockb
 # Claude Code worktrees
 .claude/worktrees/
 
+# Skills (installed via npx skills)
+.adal/
+.agents/
+.agent/
+.augment/
+.claude/skills/
+.codebuddy/
+.commandcode/
+.continue/
+.crush/
+.factory/
+.goose/
+.iflow/
+.junie/
+.kilocode/
+.kiro/
+.kode/
+.mcpjam/
+.mux/
+.neovate/
+.openhands/
+.pi/
+.pochi/
+.qoder/
+.qwen/
+.roo/
+.trae/
+.vibe/
+.windsurf/
+.zencoder/
+skills/
+skills-lock.json
+
 # specs (development-only, not shipped)
 specs/
