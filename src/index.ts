@@ -12,9 +12,6 @@ import { createEventHook } from './hooks/event.ts'
 import { createChatMessageHook } from './hooks/chat-message.ts'
 import { createToolExecuteHooks } from './hooks/tool-execute.ts'
 
-export const name = 'opencode-otel'
-export const version = '0.1.1'
-
 interface PluginContext {
   readonly client: {
     readonly app: {
