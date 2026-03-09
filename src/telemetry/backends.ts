@@ -7,7 +7,7 @@
 
 import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http'
 import { OTLPLogExporter } from '@opentelemetry/exporter-logs-otlp-http'
-import type { LangfuseConfig, OtelConfig } from '../config.ts'
+import type { OtelConfig } from '../config.ts'
 
 export type BackendName = 'langfuse' | 'generic'
 
@@ -23,9 +23,10 @@ export interface Exporters {
  * Langfuse exposes OTLP-compatible endpoints under /api/public/otel/v1/*.
  * Auth uses HTTP Basic with publicKey:secretKey.
  */
-function createLangfuseExporters(langfuse: LangfuseConfig): Exporters {
+function createLangfuseExporters(config: OtelConfig): Exporters {
+  const langfuse = config.langfuse!
   const authHeader = `Basic ${btoa(langfuse.publicKey + ':' + langfuse.secretKey)}`
-  const headers = { Authorization: authHeader }
+  const headers = { ...config.headers, Authorization: authHeader }
 
   const baseUrl = langfuse.baseUrl.replace(/\/+$/, '')
 
@@ -74,7 +75,7 @@ function createGenericExporters(config: OtelConfig): Exporters {
  */
 export function createExporters(config: OtelConfig): Exporters {
   if (config.langfuse) {
-    return createLangfuseExporters(config.langfuse)
+    return createLangfuseExporters(config)
   }
   return createGenericExporters(config)
 }

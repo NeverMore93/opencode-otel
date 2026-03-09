@@ -178,9 +178,9 @@ export async function loadConfig(): Promise<OtelConfig> {
     toOptionalString(process.env['LANGFUSE_BASE_URL']) ??
     toOptionalString(fileConfig?.langfuse?.baseUrl)
 
+  const langfuseCreds = [langfusePublicKey, langfuseSecretKey, langfuseBaseUrl]
   const hasPartialLangfuse =
-    [langfusePublicKey, langfuseSecretKey, langfuseBaseUrl].some(Boolean) &&
-    ![langfusePublicKey, langfuseSecretKey, langfuseBaseUrl].every(Boolean)
+    langfuseCreds.some(Boolean) && !langfuseCreds.every(Boolean)
 
   if (hasPartialLangfuse) {
     console.warn(
