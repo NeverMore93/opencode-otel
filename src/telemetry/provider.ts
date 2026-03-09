@@ -19,11 +19,18 @@ import {
   type LogRecordExporter,
 } from '@opentelemetry/sdk-logs'
 import type { OtelConfig } from '../config.ts'
-import { createExporters } from './backends.ts'
+import { createExporters, type BackendName } from './backends.ts'
+
+export interface BackendInfo {
+  readonly name: BackendName
+  readonly hasTraces: boolean
+  readonly hasLogs: boolean
+}
 
 export interface Providers {
   readonly tracerProvider: BasicTracerProvider
   readonly loggerProvider: LoggerProvider
+  readonly backend: BackendInfo
 }
 
 /**
@@ -41,7 +48,8 @@ export function initProviders(config: OtelConfig): Providers {
     'service.instance.id': `${getHostname()}-${process.pid}`,
   })
 
-  const { traceExporter, logExporter } = createExporters(config)
+  const exporters = createExporters(config)
+  const { traceExporter, logExporter } = exporters
 
   const spanProcessors = traceExporter
     ? [new BatchSpanProcessor(traceExporter as SpanExporter)]
@@ -61,7 +69,13 @@ export function initProviders(config: OtelConfig): Providers {
     processors: logProcessors,
   })
 
-  return { tracerProvider, loggerProvider }
+  const backend: BackendInfo = {
+    name: exporters.backend,
+    hasTraces: traceExporter !== undefined,
+    hasLogs: logExporter !== undefined,
+  }
+
+  return { tracerProvider, loggerProvider, backend }
 }
 
 function getHostname(): string {

@@ -10,6 +10,13 @@
 /** Parsed representation of OTEL_EXPORTER_OTLP_HEADERS */
 export type OtelHeaders = Readonly<Record<string, string>>
 
+/** Langfuse-specific credentials. */
+export interface LangfuseConfig {
+  readonly publicKey: string
+  readonly secretKey: string
+  readonly baseUrl: string
+}
+
 /** Full plugin configuration. All fields are immutable after construction. */
 export interface OtelConfig {
   /** OTLP HTTP endpoint for traces (e.g. http://localhost:4318/v1/traces) */
@@ -20,6 +27,8 @@ export interface OtelConfig {
   readonly serviceName: string
   /** Parsed headers from OTEL_EXPORTER_OTLP_HEADERS or config file. */
   readonly headers: OtelHeaders
+  /** Langfuse backend credentials. Present only when all three vars are set. */
+  readonly langfuse: LangfuseConfig | undefined
 }
 
 /**
@@ -31,6 +40,11 @@ interface ConfigFileShape {
   logsEndpoint?: unknown
   serviceName?: unknown
   headers?: unknown
+  langfuse?: {
+    publicKey?: unknown
+    secretKey?: unknown
+    baseUrl?: unknown
+  }
 }
 
 const DEFAULT_SERVICE_NAME = 'opencode-agent'
@@ -153,10 +167,37 @@ export async function loadConfig(): Promise<OtelConfig> {
       ? parseOtlpHeaders(rawEnvHeaders)
       : fileHeaders(fileConfig?.headers)
 
+  // Langfuse: detect when all three credentials are present.
+  const langfusePublicKey =
+    toOptionalString(process.env['LANGFUSE_PUBLIC_KEY']) ??
+    toOptionalString(fileConfig?.langfuse?.publicKey)
+  const langfuseSecretKey =
+    toOptionalString(process.env['LANGFUSE_SECRET_KEY']) ??
+    toOptionalString(fileConfig?.langfuse?.secretKey)
+  const langfuseBaseUrl =
+    toOptionalString(process.env['LANGFUSE_BASE_URL']) ??
+    toOptionalString(fileConfig?.langfuse?.baseUrl)
+
+  const hasPartialLangfuse =
+    [langfusePublicKey, langfuseSecretKey, langfuseBaseUrl].some(Boolean) &&
+    ![langfusePublicKey, langfuseSecretKey, langfuseBaseUrl].every(Boolean)
+
+  if (hasPartialLangfuse) {
+    console.warn(
+      '[opencode-otel] Partial Langfuse config detected — need LANGFUSE_PUBLIC_KEY, LANGFUSE_SECRET_KEY, and LANGFUSE_BASE_URL. Skipping Langfuse backend.',
+    )
+  }
+
+  const langfuse: LangfuseConfig | undefined =
+    langfusePublicKey && langfuseSecretKey && langfuseBaseUrl
+      ? Object.freeze({ publicKey: langfusePublicKey, secretKey: langfuseSecretKey, baseUrl: langfuseBaseUrl })
+      : undefined
+
   return Object.freeze({
     tracesEndpoint,
     logsEndpoint,
     serviceName,
     headers,
+    langfuse,
   } satisfies OtelConfig)
 }
