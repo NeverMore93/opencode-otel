@@ -6,7 +6,7 @@
  */
 
 import { loadConfig } from './config.ts'
-import { initProviders } from './telemetry/provider.ts'
+import { initProviders, type BackendInfo } from './telemetry/provider.ts'
 import { registerShutdown } from './telemetry/shutdown.ts'
 import { createEventHook } from './hooks/event.ts'
 import { createChatMessageHook } from './hooks/chat-message.ts'
@@ -43,12 +43,12 @@ export default async function plugin(ctx: PluginContext) {
   try {
     const config = await loadConfig()
 
-    if (!config.tracesEndpoint && !config.logsEndpoint) {
+    if (!config.tracesEndpoint && !config.logsEndpoint && !config.langfuse) {
       await logInfo('No OTEL endpoints configured — plugin inactive')
       return {}
     }
 
-    const { tracerProvider, loggerProvider } = initProviders(config)
+    const { tracerProvider, loggerProvider, backend } = initProviders(config)
 
     registerShutdown(tracerProvider, loggerProvider, logError)
 
@@ -58,12 +58,12 @@ export default async function plugin(ctx: PluginContext) {
 
     const toolHooks = createToolExecuteHooks(tracerProvider, logError)
 
-    const backends = [
-      config.tracesEndpoint ? 'traces' : null,
-      config.logsEndpoint ? 'logs' : null,
+    const signals = [
+      backend.hasTraces ? 'traces' : null,
+      backend.hasLogs ? 'logs' : null,
     ].filter(Boolean).join(', ')
 
-    await logInfo(`Initialized — endpoints: ${backends}, service: ${config.serviceName}`)
+    await logInfo(`Initialized — endpoints: ${signals} (${backend.name}), service: ${config.serviceName}`)
 
     return {
       event: eventHook,
