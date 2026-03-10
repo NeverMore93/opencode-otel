@@ -82,8 +82,39 @@ export function parseOtlpHeaders(raw: string): OtelHeaders {
 }
 
 /**
+ * Recursively replace ${VAR} placeholders in parsed JSON with process.env values.
+ * Strings without placeholders pass through unchanged. Non-string primitives
+ * (numbers, booleans, null) are returned as-is.
+ * Throws if a referenced env var is undefined.
+ */
+function resolveEnvPlaceholders(obj: unknown): unknown {
+  if (typeof obj === 'string') {
+    if (!obj.includes('${')) return obj
+    return obj.replace(/\$\{(\w+)\}/g, (_match, name: string) => {
+      const val = process.env[name]
+      if (val === undefined) {
+        throw new Error(`Environment variable ${name} is not set (config references \${${name}})`)
+      }
+      return val
+    })
+  }
+  if (Array.isArray(obj)) {
+    return obj.map(resolveEnvPlaceholders)
+  }
+  if (obj !== null && typeof obj === 'object') {
+    const result: Record<string, unknown> = {}
+    for (const [key, value] of Object.entries(obj as Record<string, unknown>)) {
+      result[key] = resolveEnvPlaceholders(value)
+    }
+    return result
+  }
+  return obj
+}
+
+/**
  * Attempt to read and parse the optional config file.
  * Returns `null` if the file does not exist or cannot be parsed.
+ * ${VAR} placeholders are resolved against process.env.
  * Never throws.
  */
 async function readConfigFile(): Promise<ConfigFileShape | null> {
@@ -97,7 +128,7 @@ async function readConfigFile(): Promise<ConfigFileShape | null> {
     if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
       return null
     }
-    return parsed as ConfigFileShape
+    return resolveEnvPlaceholders(parsed) as ConfigFileShape
   } catch {
     return null
   }
