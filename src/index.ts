@@ -19,9 +19,12 @@ function sanitizeUrl(raw: string): string {
     const url = new URL(raw)
     url.username = ''
     url.password = ''
+    url.searchParams.forEach((_value, key) => {
+      url.searchParams.set(key, 'REDACTED')
+    })
     return url.toString()
   } catch {
-    return raw
+    return '<invalid URL>'
   }
 }
 
