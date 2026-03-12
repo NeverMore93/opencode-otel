@@ -2,7 +2,7 @@
 
 [![npm](https://img.shields.io/npm/v/opencode-otel)](https://www.npmjs.com/package/opencode-otel)
 
-[OpenCode](https://opencode.ai) observability plugin — export session traces and logs to any OTLP-compatible backend (Langfuse, Jaeger, Grafana Tempo, Datadog, etc.) via OpenTelemetry.
+[OpenCode](https://opencode.ai) observability plugin — export session traces and logs via OpenTelemetry to generic OTLP backends (Jaeger, Grafana Tempo, Datadog, etc.), with native Langfuse support via `@langfuse/otel`.
 
 ## Quick Start
 
@@ -107,7 +107,7 @@ Environment variables always take precedence over config file values.
 
 When both Langfuse credentials and generic OTLP endpoints are configured, traces are sent to **all backends simultaneously**. Each backend operates independently — a failure in one does not affect the other.
 
-```
+```text
 TracerProvider
   ├─ LangfuseSpanProcessor  → Langfuse native API
   └─ BatchSpanProcessor     → Generic OTLP HTTP endpoint
