@@ -76,7 +76,14 @@ export default async function plugin(ctx: PluginContext) {
     }
 
     return {
-      event: eventHook,
+      // OpenCode plugin SDK wraps event as { event: Event }; unwrap and validate before passing to hook
+      event: (input: { event: unknown }) => {
+        const ev = input.event
+        if (typeof ev === 'object' && ev !== null && typeof (ev as Record<string, unknown>).type === 'string') {
+          return eventHook(ev as Parameters<typeof eventHook>[0])
+        }
+        return Promise.resolve()
+      },
       'chat.message': chatMessageHook,
       'tool.execute.before': toolHooks.before,
       'tool.execute.after': toolHooks.after,
