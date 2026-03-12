@@ -11,7 +11,22 @@ import type { LogRecordProcessor } from '@opentelemetry/sdk-logs'
 import { BatchLogRecordProcessor } from '@opentelemetry/sdk-logs'
 import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http'
 import { OTLPLogExporter } from '@opentelemetry/exporter-logs-otlp-http'
+import { LangfuseSpanProcessor } from '@langfuse/otel'
 import type { OtelConfig } from '../config.ts'
+
+function sanitizeUrl(raw: string): string {
+  try {
+    const url = new URL(raw)
+    url.username = ''
+    url.password = ''
+    url.searchParams.forEach((_value, key) => {
+      url.searchParams.set(key, 'REDACTED')
+    })
+    return url.toString()
+  } catch {
+    return '<invalid URL>'
+  }
+}
 
 export interface BackendEntry {
   readonly name: 'langfuse' | 'generic'
@@ -40,8 +55,6 @@ function createLangfuseProcessors(config: OtelConfig): {
   backend: BackendEntry
 } {
   const langfuse = config.langfuse!
-  // Dynamic import avoided — @langfuse/otel is a direct dependency
-  const { LangfuseSpanProcessor } = require('@langfuse/otel')
 
   const processor = new LangfuseSpanProcessor({
     publicKey: langfuse.publicKey,
@@ -97,8 +110,8 @@ function createGenericProcessors(config: OtelConfig): {
   }
 
   const endpointParts: string[] = []
-  if (config.tracesEndpoint) endpointParts.push(`traces → ${config.tracesEndpoint}`)
-  if (config.logsEndpoint) endpointParts.push(`logs → ${config.logsEndpoint}`)
+  if (config.tracesEndpoint) endpointParts.push(`traces → ${sanitizeUrl(config.tracesEndpoint)}`)
+  if (config.logsEndpoint) endpointParts.push(`logs → ${sanitizeUrl(config.logsEndpoint)}`)
 
   return {
     spanProcessors,

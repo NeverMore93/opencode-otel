@@ -15,23 +15,6 @@ import { createToolExecuteHooks } from './hooks/tool-execute.ts'
 
 const PLUGIN_NAME = 'opencode-otel'
 
-function sanitizeUrl(raw: string): string {
-  try {
-    const url = new URL(raw)
-    url.username = ''
-    url.password = ''
-    url.searchParams.forEach((_value, key) => {
-      url.searchParams.set(key, 'REDACTED')
-    })
-    return url.toString()
-  } catch (err) {
-    console.warn(
-      `[opencode-otel] Failed to parse endpoint URL: ${err instanceof Error ? err.message : String(err)}`,
-    )
-    return '<invalid URL>'
-  }
-}
-
 interface PluginContext {
   readonly client: {
     readonly app: {

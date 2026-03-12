@@ -165,6 +165,20 @@ describe('createProcessors', () => {
     expect(result.backends[0].endpointDisplay).toBe('https://langfuse.example.com')
   })
 
+  test('generic endpointDisplay sanitizes URLs with credentials', () => {
+    const config = makeConfig({
+      tracesEndpoint: 'http://user:pass@localhost:4318/v1/traces?token=secret',
+    })
+
+    const result = createProcessors(config)
+    const display = result.backends[0].endpointDisplay
+
+    expect(display).not.toContain('user')
+    expect(display).not.toContain('pass')
+    expect(display).not.toContain('secret')
+    expect(display).toContain('REDACTED')
+  })
+
   test('result is frozen (immutable)', () => {
     const config = makeConfig()
     const result = createProcessors(config)
