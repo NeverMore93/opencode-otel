@@ -14,7 +14,7 @@
  */
 
 import type { BasicTracerProvider } from '@opentelemetry/sdk-trace-base'
-import { getSession, setMessageSpan } from '../telemetry/context.ts'
+import { getOrCreateSession, setMessageSpan } from '../telemetry/context.ts'
 import { truncateAttributes, truncateString } from '../telemetry/attributes.ts'
 
 const TRACER_NAME = 'opencode-otel'
@@ -44,7 +44,7 @@ export function createChatMessageHook(
 ): (input: ChatMessageInput, output: unknown) => Promise<void> {
   return async (input: ChatMessageInput, _output: unknown): Promise<void> => {
     try {
-      const session = getSession(input.sessionID)
+      const session = getOrCreateSession(input.sessionID, tracerProvider)
       if (session === undefined) return
 
       const tracer = tracerProvider.getTracer(TRACER_NAME, TRACER_VERSION)

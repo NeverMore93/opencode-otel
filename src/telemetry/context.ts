@@ -6,7 +6,9 @@
  * AsyncLocalStorage (which is non-functional in Bun).
  */
 
-import { type Context, type Span, SpanStatusCode } from '@opentelemetry/api'
+import { type Context, type Span, SpanStatusCode, context as otelContext, trace } from '@opentelemetry/api'
+import type { BasicTracerProvider } from '@opentelemetry/sdk-trace-base'
+import { truncateString } from './attributes.ts'
 
 export type SessionContext = {
   readonly traceCtx: Context
@@ -41,6 +43,31 @@ export function createSession(
  * Look up a session by ID. Returns undefined if not found.
  */
 export function getSession(sessionID: string): SessionContext | undefined {
+  return sessions.get(sessionID)
+}
+
+/**
+ * Look up a session by ID; if not found, lazily create a root span.
+ *
+ * This handles pre-existing sessions (created before the plugin loaded,
+ * e.g. Feishu long-lived sessions) that never fired session.created.
+ */
+export function getOrCreateSession(
+  sessionID: string,
+  tracerProvider: BasicTracerProvider,
+): SessionContext | undefined {
+  if (sessionID === '') return undefined
+
+  const existing = sessions.get(sessionID)
+  if (existing !== undefined) return existing
+
+  const tracer = tracerProvider.getTracer('opencode-otel')
+  const rootSpan = tracer.startSpan('session', undefined, otelContext.active())
+  rootSpan.setAttribute('opencode.session.id', truncateString(sessionID))
+
+  const traceCtx = trace.setSpan(otelContext.active(), rootSpan)
+  createSession(sessionID, traceCtx, rootSpan)
+
   return sessions.get(sessionID)
 }
 
