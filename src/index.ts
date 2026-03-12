@@ -34,8 +34,10 @@ export default async function plugin(ctx: PluginContext) {
       await ctx.client.app.log({
         body: { service: PLUGIN_NAME, level, message: `[${PLUGIN_NAME}] ${message}` },
       })
-    } catch {
-      // Silently drop — cannot log
+    } catch (err) {
+      console.warn(
+        `[opencode-otel] Failed to send log to OpenCode: ${err instanceof Error ? err.message : String(err)}`,
+      )
     }
   }
 

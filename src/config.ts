@@ -3,9 +3,12 @@
  *
  * Sources (in precedence order, highest first):
  *   1. Environment variables
- *   2. .opencode/plugins/otel.json (if present)
+ *   2. Config file: ~/.config/opencode/plugins/otel.json
  *   3. Built-in defaults
  */
+
+import { homedir } from 'node:os'
+import { join } from 'node:path'
 
 /** Parsed representation of OTEL_EXPORTER_OTLP_HEADERS */
 export type OtelHeaders = Readonly<Record<string, string>>
@@ -48,7 +51,7 @@ interface ConfigFileShape {
 }
 
 const DEFAULT_SERVICE_NAME = 'opencode-agent'
-const CONFIG_FILE_PATH = '.opencode/plugins/otel.json'
+const CONFIG_FILE_PATH = join(homedir(), '.config', 'opencode', 'plugins', 'otel.json')
 
 /**
  * Parse a OTEL_EXPORTER_OTLP_HEADERS string into a plain object.
@@ -120,18 +123,18 @@ function resolveEnvPlaceholders(obj: unknown): unknown {
 async function readConfigFile(): Promise<ConfigFileShape | null> {
   try {
     const file = Bun.file(CONFIG_FILE_PATH)
-    const exists = await file.exists()
-    if (!exists) {
-      return null
+    if (await file.exists()) {
+      const parsed: unknown = await file.json()
+      if (typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed)) {
+        return resolveEnvPlaceholders(parsed) as ConfigFileShape
+      }
     }
-    const parsed: unknown = await file.json()
-    if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
-      return null
-    }
-    return resolveEnvPlaceholders(parsed) as ConfigFileShape
-  } catch {
-    return null
+  } catch (err) {
+    console.warn(
+      `[opencode-otel] Failed to read config file ${CONFIG_FILE_PATH}: ${err instanceof Error ? err.message : String(err)}`,
+    )
   }
+  return null
 }
 
 /**

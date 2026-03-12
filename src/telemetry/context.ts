@@ -27,6 +27,7 @@ export function createSession(
   rootSpan: Span,
 ): void {
   if (sessions.has(sessionID)) {
+    console.warn(`[opencode-otel] Overwriting existing session: ${sessionID}`)
     endSession(sessionID)
   }
   sessions.set(sessionID, {
@@ -100,6 +101,11 @@ export function endSession(sessionID: string): void {
     session.messageSpan.end()
   }
 
+  if (session.pendingTools.size > 0) {
+    console.warn(
+      `[opencode-otel] Ending ${session.pendingTools.size} orphaned tool span(s) for session ${sessionID}`,
+    )
+  }
   for (const [, toolSpan] of session.pendingTools) {
     toolSpan.setStatus({ code: SpanStatusCode.ERROR, message: 'orphaned tool span — session ended before tool completed' })
     toolSpan.end()

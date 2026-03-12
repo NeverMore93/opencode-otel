@@ -81,7 +81,10 @@ export function initProviders(config: OtelConfig): Providers {
 function getHostname(): string {
   try {
     return osHostname()
-  } catch {
+  } catch (err) {
+    console.warn(
+      `[opencode-otel] Failed to get hostname: ${err instanceof Error ? err.message : String(err)}`,
+    )
     return 'unknown'
   }
 }

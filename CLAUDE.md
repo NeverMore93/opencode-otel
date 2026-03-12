@@ -1,4 +1,4 @@
-# CLAUDE.md
+﻿# CLAUDE.md
 
 ## What This Project Is
 
@@ -25,7 +25,7 @@
 
 ```
 Plugin Entry (src/index.ts)
-  ├─ Config (src/config.ts) ← env vars + .opencode/plugins/otel.json
+  ├─ Config (src/config.ts) ← env vars + ~/.config/opencode/plugins/otel.json
   ├─ Telemetry
   │   ├─ provider.ts   ← TracerProvider + LoggerProvider setup
   │   ├─ backends.ts   ← Backend-specific exporter factories (Langfuse, LangSmith, Generic)
