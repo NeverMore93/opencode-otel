@@ -128,6 +128,9 @@ async function readConfigFile(): Promise<ConfigFileShape | null> {
       if (typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed)) {
         return resolveEnvPlaceholders(parsed) as ConfigFileShape
       }
+      console.warn(
+        `[opencode-otel] Invalid config file at ${CONFIG_FILE_PATH}: content is not a JSON object`,
+      )
     }
   } catch (err) {
     console.warn(
