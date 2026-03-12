@@ -10,6 +10,7 @@ import { BatchSpanProcessor } from '@opentelemetry/sdk-trace-base'
 import type { LogRecordProcessor } from '@opentelemetry/sdk-logs'
 import { BatchLogRecordProcessor } from '@opentelemetry/sdk-logs'
 import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http'
+import { OTLPTraceExporter as OTLPProtoTraceExporter } from '@opentelemetry/exporter-trace-otlp-proto'
 import { OTLPLogExporter } from '@opentelemetry/exporter-logs-otlp-http'
 import { LangfuseSpanProcessor } from '@langfuse/otel'
 import type { OtelConfig } from '../config.ts'
@@ -56,14 +57,25 @@ function createLangfuseProcessors(config: OtelConfig): {
 } {
   const langfuse = config.langfuse!
 
+  const baseUrl = langfuse.baseUrl.replace(/\/+$/, '')
+  const authHeaderValue = btoa(`${langfuse.publicKey}:${langfuse.secretKey}`)
+
+  // Langfuse OTLP endpoint only accepts HTTP/protobuf, not JSON.
+  // Pass a custom protobuf exporter to LangfuseSpanProcessor.
+  const exporter = new OTLPProtoTraceExporter({
+    url: `${baseUrl}/api/public/otel/v1/traces`,
+    headers: {
+      Authorization: `Basic ${authHeaderValue}`,
+    },
+  })
+
   const processor = new LangfuseSpanProcessor({
     publicKey: langfuse.publicKey,
     secretKey: langfuse.secretKey,
     baseUrl: langfuse.baseUrl,
     shouldExportSpan: () => true,
+    exporter,
   })
-
-  const baseUrl = langfuse.baseUrl.replace(/\/+$/, '')
 
   return {
     spanProcessors: [processor as SpanProcessor],
