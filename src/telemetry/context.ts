@@ -66,9 +66,10 @@ export function getOrCreateSession(
   rootSpan.setAttribute('opencode.session.id', truncateString(sessionID))
 
   const traceCtx = trace.setSpan(otelContext.active(), rootSpan)
-  createSession(sessionID, traceCtx, rootSpan)
+  const newSession: SessionContext = { traceCtx, rootSpan, pendingTools: new Map() }
+  sessions.set(sessionID, newSession)
 
-  return sessions.get(sessionID)
+  return newSession
 }
 
 /**
