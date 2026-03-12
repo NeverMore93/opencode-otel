@@ -25,6 +25,8 @@ export interface BackendInfo {
   readonly name: BackendName
   readonly hasTraces: boolean
   readonly hasLogs: boolean
+  readonly tracesUrl: string | undefined
+  readonly logsUrl: string | undefined
 }
 
 export interface Providers {
@@ -73,6 +75,8 @@ export function initProviders(config: OtelConfig): Providers {
     name: exporters.backend,
     hasTraces: traceExporter !== undefined,
     hasLogs: logExporter !== undefined,
+    tracesUrl: exporters.tracesUrl,
+    logsUrl: exporters.logsUrl,
   }
 
   return { tracerProvider, loggerProvider, backend }

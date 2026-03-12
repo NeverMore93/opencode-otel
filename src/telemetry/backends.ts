@@ -15,6 +15,8 @@ export interface Exporters {
   readonly traceExporter: OTLPTraceExporter | undefined
   readonly logExporter: OTLPLogExporter | undefined
   readonly backend: BackendName
+  readonly tracesUrl: string | undefined
+  readonly logsUrl: string | undefined
 }
 
 /**
@@ -29,17 +31,15 @@ function createLangfuseExporters(config: OtelConfig): Exporters {
   const headers = { ...config.headers, Authorization: authHeader }
 
   const baseUrl = langfuse.baseUrl.replace(/\/+$/, '')
+  const tracesUrl = `${baseUrl}/api/public/otel/v1/traces`
+  const logsUrl = `${baseUrl}/api/public/otel/v1/logs`
 
   return {
-    traceExporter: new OTLPTraceExporter({
-      url: `${baseUrl}/api/public/otel/v1/traces`,
-      headers,
-    }),
-    logExporter: new OTLPLogExporter({
-      url: `${baseUrl}/api/public/otel/v1/logs`,
-      headers,
-    }),
+    traceExporter: new OTLPTraceExporter({ url: tracesUrl, headers }),
+    logExporter: new OTLPLogExporter({ url: logsUrl, headers }),
     backend: 'langfuse',
+    tracesUrl,
+    logsUrl,
   }
 }
 
@@ -66,7 +66,13 @@ function createGenericExporters(config: OtelConfig): Exporters {
       })
     : undefined
 
-  return { traceExporter, logExporter, backend: 'generic' }
+  return {
+    traceExporter,
+    logExporter,
+    backend: 'generic',
+    tracesUrl: config.tracesEndpoint,
+    logsUrl: config.logsEndpoint,
+  }
 }
 
 /**
