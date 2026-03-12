@@ -61,12 +61,11 @@ function extractSessionID(eventType: string, properties: Record<string, unknown>
   // Nested form: session lifecycle events may carry { info: { id } }
   if (
     eventType === 'session.created' ||
-    eventType === 'session.deleted' ||
-    eventType === 'session.updated'
+    eventType === 'session.deleted'
   ) {
     const info = properties['info']
     if (typeof info === 'object' && info !== null && 'id' in info) {
-      const id = (info as Record<string, unknown>)['id']
+      const id = (info as { id: unknown }).id
       return typeof id === 'string' ? id : ''
     }
   }

@@ -52,8 +52,7 @@ export function createChatMessageHook(
       const attributes = truncateAttributes({
         'opencode.session.id': input.sessionID,
         ...(input.agent !== undefined ? { 'opencode.message.agent': input.agent } : {}),
-        ...(input.model?.providerID !== undefined ? { 'opencode.message.model.provider': input.model.providerID } : {}),
-        ...(input.model?.modelID !== undefined ? { 'opencode.message.model.id': input.model.modelID } : {}),
+        ...(input.model && { 'opencode.message.model.provider': input.model.providerID, 'opencode.message.model.id': input.model.modelID }),
       })
 
       const span = tracer.startSpan('chat.message', { attributes }, session.traceCtx)
