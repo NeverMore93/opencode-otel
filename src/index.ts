@@ -68,6 +68,12 @@ export default async function plugin(ctx: PluginContext) {
     ].filter(Boolean).join(', ')
 
     await logInfo(`Initialized — endpoints: ${signals} (${backend.name}), service: ${config.serviceName}`)
+    if (backend.tracesUrl) {
+      await logInfo(`Traces endpoint: ${backend.tracesUrl}`)
+    }
+    if (backend.logsUrl) {
+      await logInfo(`Logs endpoint: ${backend.logsUrl}`)
+    }
 
     return {
       event: eventHook,
