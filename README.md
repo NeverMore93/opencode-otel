@@ -44,14 +44,29 @@ All configuration via environment variables (or optional `.opencode/plugins/otel
 
 At least one endpoint must be set for the plugin to activate. If neither is configured, the plugin stays inactive (no overhead).
 
-Optional config file `~/.config/opencode/plugins/otel.json`:
+### Config File
+
+Instead of (or in addition to) env vars, create `.opencode/plugins/otel.json`. An example is provided at the repo root — copy and edit:
+
+```bash
+cp otel.json.example .opencode/plugins/otel.json
+```
+
+The example file covers all supported fields including Langfuse credentials and `${VAR}` placeholder syntax for env var resolution:
 
 ```json
 {
   "tracesEndpoint": "http://localhost:4318/v1/traces",
   "logsEndpoint": "http://localhost:4318/v1/logs",
-  "serviceName": "my-agent",
-  "headers": { "Authorization": "Bearer token" }
+  "serviceName": "opencode-agent",
+  "headers": {
+    "Authorization": "Bearer ${YOUR_API_TOKEN}"
+  },
+  "langfuse": {
+    "publicKey": "${LANGFUSE_PUBLIC_KEY}",
+    "secretKey": "${LANGFUSE_SECRET_KEY}",
+    "baseUrl": "https://your-langfuse-host.example.com"
+  }
 }
 ```
 

@@ -47,10 +47,10 @@ export function registerShutdown(
       ])
 
       if (result === 'timeout') {
-        logError('opencode-otel shutdown timed out after 5s')
+        logError('Shutdown timed out after 5s')
       }
     } catch (err) {
-      logError(`opencode-otel shutdown error: ${err instanceof Error ? err.message : String(err)}`)
+      logError(`Shutdown error: ${err instanceof Error ? err.message : String(err)}`)
     } finally {
       clearTimeout(timeoutId)
     }

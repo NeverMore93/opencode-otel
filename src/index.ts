@@ -30,7 +30,7 @@ export default async function plugin(ctx: PluginContext) {
   const log = (level: 'info' | 'error') => async (message: string) => {
     try {
       await ctx.client.app.log({
-        body: { service: 'opencode-otel', level, message },
+        body: { service: 'opencode-otel', level, message: `[opencode-otel] ${message}` },
       })
     } catch {
       // Silently drop — cannot log

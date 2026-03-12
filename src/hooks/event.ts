@@ -146,7 +146,7 @@ export function createEventHook(
       emitLogRecord(loggerProvider, event.type, sessionID)
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
-      logError(`opencode-otel event hook error [${event.type}]: ${message}`)
+      logError(`Event hook error [${event.type}]: ${message}`)
     }
   }
 }

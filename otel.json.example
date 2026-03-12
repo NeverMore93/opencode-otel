@@ -1,0 +1,13 @@
+{
+  "tracesEndpoint": "http://localhost:4318/v1/traces",
+  "logsEndpoint": "http://localhost:4318/v1/logs",
+  "serviceName": "opencode-agent",
+  "headers": {
+    "Authorization": "Bearer ${YOUR_API_TOKEN}"
+  },
+  "langfuse": {
+    "publicKey": "${LANGFUSE_PUBLIC_KEY}",
+    "secretKey": "${LANGFUSE_SECRET_KEY}",
+    "baseUrl": "https://your-langfuse-host.example.com"
+  }
+}
