@@ -51,7 +51,7 @@ function severityText(severity: SeverityNumber): string {
  * Extract sessionID from event properties.
  *
  * All events: properties.sessionID (flat form used by plugin SDK)
- * Fallback for session.created/deleted/updated: properties.info.id (nested form)
+ * Fallback for session.created/deleted: properties.info.id (nested form)
  */
 function extractSessionID(eventType: string, properties: Record<string, unknown>): string {
   // Flat form: all events may carry sessionID directly
