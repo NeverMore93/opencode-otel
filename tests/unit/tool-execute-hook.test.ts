@@ -159,13 +159,21 @@ describe('createToolExecuteHooks — before', () => {
     expect(child!.parentSpanContext?.spanId).toBe(root!.spanContext().spanId)
   })
 
-  test('is a no-op when session is not found', async () => {
+  test('lazily creates a root span for a pre-existing session', async () => {
     const errors: string[] = []
-    const { before } = createToolExecuteHooks(provider, (msg) => errors.push(msg))
+    const { before, after } = createToolExecuteHooks(provider, (msg) => errors.push(msg))
 
-    await before({ sessionID: 'no-such-session', tool: 'bash', callID: 'c1' }, undefined)
+    const sessionID = 'lazy-tool-' + Math.random().toString(36).slice(2)
+    const callID = 'c-lazy-1'
 
-    expect(exporter.getFinishedSpans()).toHaveLength(0)
+    // No session.created event — simulates a pre-existing session
+    await before({ sessionID, tool: 'bash', callID }, undefined)
+    await after({ sessionID, tool: 'bash', callID, title: 'ran bash' }, undefined)
+
+    endSession(sessionID)
+    const spans = exporter.getFinishedSpans()
+    expect(spans.find((s) => s.name === 'session')).toBeDefined()
+    expect(spans.find((s) => s.name === 'tool.bash')).toBeDefined()
     expect(errors).toHaveLength(0)
   })
 })

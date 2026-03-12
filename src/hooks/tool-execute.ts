@@ -17,7 +17,7 @@
 
 import { SpanStatusCode } from '@opentelemetry/api'
 import type { BasicTracerProvider } from '@opentelemetry/sdk-trace-base'
-import { getSession, addToolSpan, removeToolSpan } from '../telemetry/context.ts'
+import { getOrCreateSession, addToolSpan, removeToolSpan } from '../telemetry/context.ts'
 import { truncateString, truncateAttributes } from '../telemetry/attributes.ts'
 
 const TRACER_NAME = 'opencode-otel'
@@ -57,7 +57,7 @@ export function createToolExecuteHooks(
 ): ToolExecuteHooks {
   const before = async (input: ToolBeforeInput, _output: unknown): Promise<void> => {
     try {
-      const session = getSession(input.sessionID)
+      const session = getOrCreateSession(input.sessionID, tracerProvider)
       if (session === undefined) return
 
       const tracer = tracerProvider.getTracer(TRACER_NAME, TRACER_VERSION)

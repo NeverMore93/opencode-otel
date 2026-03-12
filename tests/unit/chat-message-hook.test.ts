@@ -131,22 +131,27 @@ describe('createChatMessageHook', () => {
     expect(spans.find((s) => s.name === 'chat.message')).toBeDefined()
   })
 
-  test('is a no-op when session is not found', async () => {
+  test('lazily creates a root span for a pre-existing session', async () => {
     const errors: string[] = []
     const hook = createChatMessageHook(provider, (msg) => errors.push(msg))
 
-    // No session created for this ID
+    const sessionID = 'lazy-session-' + Math.random().toString(36).slice(2)
+
+    // No session.created event — simulates a pre-existing session (e.g. Feishu)
     await hook(
       {
-        sessionID: 'does-not-exist',
+        sessionID,
         agent: 'coder',
         model: { providerID: 'anthropic', modelID: 'claude-3-5-sonnet' },
       },
       undefined,
     )
 
+    // Lazy creation should have produced a root span + chat.message span
+    endSession(sessionID)
     const spans = exporter.getFinishedSpans()
-    expect(spans).toHaveLength(0)
+    expect(spans.find((s) => s.name === 'session')).toBeDefined()
+    expect(spans.find((s) => s.name === 'chat.message')).toBeDefined()
     expect(errors).toHaveLength(0)
   })
 
