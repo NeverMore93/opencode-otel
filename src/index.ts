@@ -12,6 +12,8 @@ import { createEventHook } from './hooks/event.ts'
 import { createChatMessageHook } from './hooks/chat-message.ts'
 import { createToolExecuteHooks } from './hooks/tool-execute.ts'
 
+const PLUGIN_NAME = 'opencode-otel'
+
 interface PluginContext {
   readonly client: {
     readonly app: {
@@ -30,7 +32,7 @@ export default async function plugin(ctx: PluginContext) {
   const log = (level: 'info' | 'error') => async (message: string) => {
     try {
       await ctx.client.app.log({
-        body: { service: 'opencode-otel', level, message: `[opencode-otel] ${message}` },
+        body: { service: PLUGIN_NAME, level, message: `[${PLUGIN_NAME}] ${message}` },
       })
     } catch {
       // Silently drop — cannot log
