@@ -88,6 +88,11 @@ The example file covers all supported fields including `${VAR}` placeholder synt
 ```json
 {
   "serviceName": "my-agent",
+  "tracesEndpoint": "http://localhost:4318/v1/traces",
+  "logsEndpoint": "http://localhost:4318/v1/logs",
+  "headers": {
+    "Authorization": "Bearer ${YOUR_API_TOKEN}"
+  },
   "langfuse": {
     "publicKey": "${LANGFUSE_PUBLIC_KEY}",
     "secretKey": "${LANGFUSE_SECRET_KEY}",
