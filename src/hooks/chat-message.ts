@@ -6,22 +6,29 @@
  * it can be ended by a subsequent event or by endSession cleanup.
  *
  * Data sensitivity: no message content is ever attached to the span.
+ *
+ * IMPORTANT: OpenCode plugin SDK passes (input, output) where:
+ *   input: { sessionID, agent?, model?: { providerID, modelID }, messageID?, variant? }
+ *   output: { message: UserMessage, parts: Part[] }
+ *   model is OPTIONAL.
  */
 
 import type { BasicTracerProvider } from '@opentelemetry/sdk-trace-base'
 import { getSession, setMessageSpan } from '../telemetry/context.ts'
-import { truncateAttributes } from '../telemetry/attributes.ts'
+import { truncateAttributes, truncateString } from '../telemetry/attributes.ts'
 
 const TRACER_NAME = 'opencode-otel'
 const TRACER_VERSION = '0.1.0'
 
 export interface ChatMessageInput {
   readonly sessionID: string
-  readonly agent: string
-  readonly model: {
+  readonly agent?: string
+  readonly model?: {
     readonly providerID: string
     readonly modelID: string
   }
+  readonly messageID?: string
+  readonly variant?: string
 }
 
 /**
@@ -44,9 +51,9 @@ export function createChatMessageHook(
 
       const attributes = truncateAttributes({
         'opencode.session.id': input.sessionID,
-        'opencode.message.agent': input.agent,
-        'opencode.message.model.provider': input.model.providerID,
-        'opencode.message.model.id': input.model.modelID,
+        ...(input.agent !== undefined ? { 'opencode.message.agent': input.agent } : {}),
+        ...(input.model?.providerID !== undefined ? { 'opencode.message.model.provider': input.model.providerID } : {}),
+        ...(input.model?.modelID !== undefined ? { 'opencode.message.model.id': input.model.modelID } : {}),
       })
 
       const span = tracer.startSpan('chat.message', { attributes }, session.traceCtx)

@@ -7,6 +7,12 @@
  *             human-readable title, then closes it.
  *
  * Data sensitivity: tool args and tool output are NEVER written to spans.
+ *
+ * IMPORTANT: OpenCode plugin SDK passes (input, output) where:
+ *   before input: { tool, sessionID, callID }
+ *   before output: { args }
+ *   after input: { tool, sessionID, callID, title? }
+ *   after output: unknown
  */
 
 import { SpanStatusCode } from '@opentelemetry/api'
@@ -22,15 +28,15 @@ export interface ToolBeforeInput {
   readonly sessionID: string
   readonly tool: string
   readonly callID: string
-  readonly args?: unknown
 }
 
 export interface ToolAfterInput {
   readonly sessionID: string
   readonly tool: string
   readonly callID: string
-  readonly output?: string
   readonly title?: string
+  readonly output?: string
+  readonly metadata?: unknown
 }
 
 export interface ToolExecuteHooks {

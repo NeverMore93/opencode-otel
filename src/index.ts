@@ -76,7 +76,8 @@ export default async function plugin(ctx: PluginContext) {
     }
 
     return {
-      event: eventHook,
+      // OpenCode plugin SDK wraps event as { event: Event }; unwrap before passing to hook
+      event: (input: { event: unknown }) => eventHook(input.event as Parameters<typeof eventHook>[0]),
       'chat.message': chatMessageHook,
       'tool.execute.before': toolHooks.before,
       'tool.execute.after': toolHooks.after,

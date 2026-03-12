@@ -11,6 +11,10 @@
  *
  * Bun AsyncLocalStorage is broken — explicit context map is used instead of
  * context.with() for span propagation.
+ *
+ * IMPORTANT: OpenCode plugin SDK passes { event: Event } to the event hook,
+ * where Event has { type, properties }. The event is nested one level deeper
+ * than the hook input.
  */
 
 import { type BasicTracerProvider } from '@opentelemetry/sdk-trace-base'
@@ -23,7 +27,13 @@ import { getSeverity, isAllowedEvent } from './severity.ts'
 
 const LOGGER_NAME = 'opencode-otel'
 
-type EventPayload = {
+/**
+ * OpenCode Event type — discriminated union with { type, properties }.
+ * See @opencode-ai/sdk EventSessionCreated, EventSessionIdle, etc.
+ *
+ * The plugin SDK passes this object directly as the hook input.
+ */
+type EventHookInput = {
   readonly type: string
   readonly properties: Record<string, unknown>
 }
@@ -38,11 +48,30 @@ function severityText(severity: SeverityNumber): string {
 }
 
 /**
- * Extract sessionID from event properties. Returns empty string when absent.
+ * Extract sessionID from event properties.
+ *
+ * All events: properties.sessionID (flat form used by plugin SDK)
+ * Fallback for session.created/deleted/updated: properties.info.id (nested form)
  */
-function extractSessionID(properties: Record<string, unknown>): string {
-  const raw = properties['sessionID']
-  return typeof raw === 'string' ? raw : ''
+function extractSessionID(eventType: string, properties: Record<string, unknown>): string {
+  // Flat form: all events may carry sessionID directly
+  const flat = properties['sessionID']
+  if (typeof flat === 'string' && flat !== '') return flat
+
+  // Nested form: session lifecycle events may carry { info: { id } }
+  if (
+    eventType === 'session.created' ||
+    eventType === 'session.deleted' ||
+    eventType === 'session.updated'
+  ) {
+    const info = properties['info']
+    if (typeof info === 'object' && info !== null && 'id' in info) {
+      const id = (info as Record<string, unknown>)['id']
+      return typeof id === 'string' ? id : ''
+    }
+  }
+
+  return ''
 }
 
 /**
@@ -126,27 +155,29 @@ export function createEventHook(
   tracerProvider: BasicTracerProvider,
   loggerProvider: LoggerProvider,
   logError: (msg: string) => void,
-): (event: EventPayload) => Promise<void> {
-  return async (event: EventPayload): Promise<void> => {
+): (input: EventHookInput) => Promise<void> {
+  return async (input: EventHookInput): Promise<void> => {
     try {
-      if (!isAllowedEvent(event.type)) return
+      if (input === undefined || input === null) return
 
-      const sessionID = extractSessionID(event.properties)
+      if (!isAllowedEvent(input.type)) return
+
+      const sessionID = extractSessionID(input.type, input.properties ?? {})
 
       // --- Session lifecycle ---
-      if (event.type === 'session.created') {
+      if (input.type === 'session.created') {
         handleSessionCreated(tracerProvider, sessionID)
-      } else if (event.type === 'session.idle' || event.type === 'session.deleted') {
+      } else if (input.type === 'session.idle' || input.type === 'session.deleted') {
         handleSessionEnd(sessionID)
-      } else if (event.type === 'session.error') {
+      } else if (input.type === 'session.error') {
         handleSessionError(sessionID)
       }
 
       // --- Log record for every allowed event ---
-      emitLogRecord(loggerProvider, event.type, sessionID)
+      emitLogRecord(loggerProvider, input.type, sessionID)
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
-      logError(`Event hook error [${event.type}]: ${message}`)
+      logError(`Event hook error [${input?.type ?? 'unknown'}]: ${message}`)
     }
   }
 }
