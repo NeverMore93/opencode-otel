@@ -1,4 +1,4 @@
-# CLAUDE.md
+﻿# CLAUDE.md
 
 ## What This Project Is
 
@@ -8,7 +8,7 @@
 
 - **Language**: TypeScript 5.5+ / Bun runtime
 - **Project Type**: npm library (OpenCode plugin)
-- **Dependencies**: `@opentelemetry/api@1.9.x`, `@opentelemetry/sdk-trace-base@2.5.x`, `@opentelemetry/sdk-logs@0.212.x`, `@opentelemetry/exporter-trace-otlp-http`, `@opentelemetry/exporter-logs-otlp-http`, `@opentelemetry/resources@2.5.x`
+- **Dependencies**: `@langfuse/otel@5.x` (LangfuseSpanProcessor), `@opentelemetry/api@1.9.x`, `@opentelemetry/sdk-trace-base@2.5.x`, `@opentelemetry/sdk-logs@0.212.x`, `@opentelemetry/exporter-trace-otlp-http`, `@opentelemetry/exporter-logs-otlp-http`, `@opentelemetry/resources@2.5.x`
 - **Plugin SDK**: `@opencode-ai/plugin@>=1.1.0` (peer dependency)
 - **Build**: tsup (ESM output, external `@opencode-ai/*`)
 - **Testing**: `bun test` with `InMemorySpanExporter`
@@ -28,7 +28,7 @@ Plugin Entry (src/index.ts)
   ├─ Config (src/config.ts) ← env vars + ~/.config/opencode/plugins/otel.json
   ├─ Telemetry
   │   ├─ provider.ts   ← TracerProvider + LoggerProvider setup
-  │   ├─ backends.ts   ← Backend-specific exporter factories (Langfuse, LangSmith, Generic)
+  │   ├─ backends.ts   ← Backend processor factories (Langfuse SDK + Generic OTLP fan-out)
   │   ├─ context.ts    ← Session context map (Bun workaround)
   │   └─ shutdown.ts   ← Graceful shutdown
   └─ Hooks
@@ -41,8 +41,7 @@ Plugin Entry (src/index.ts)
 
 | Backend | Env Vars | Auth |
 |---------|----------|------|
-| Langfuse | `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY`, `LANGFUSE_BASEURL` | Basic Auth |
-| LangSmith | `LANGSMITH_API_KEY`, `LANGSMITH_ENDPOINT` | x-api-key header |
+| Langfuse | `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY`, `LANGFUSE_BASE_URL` | `@langfuse/otel` native SDK |
 | Generic OTEL | `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT`, `OTEL_EXPORTER_OTLP_LOGS_ENDPOINT` | `OTEL_EXPORTER_OTLP_HEADERS` |
 
 ## Design Documents

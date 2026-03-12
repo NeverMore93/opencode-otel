@@ -6,7 +6,8 @@
  */
 
 import { loadConfig } from './config.ts'
-import { initProviders, type BackendInfo } from './telemetry/provider.ts'
+import { initProviders } from './telemetry/provider.ts'
+import type { BackendEntry } from './telemetry/backends.ts'
 import { registerShutdown } from './telemetry/shutdown.ts'
 import { createEventHook } from './hooks/event.ts'
 import { createChatMessageHook } from './hooks/chat-message.ts'
@@ -69,27 +70,26 @@ export default async function plugin(ctx: PluginContext) {
       return {}
     }
 
-    const { tracerProvider, loggerProvider, backend } = initProviders(config)
+    const { tracerProvider, loggerProvider, backends } = initProviders(config)
+
+    if (backends.length === 0) {
+      await logInfo('No backends initialized — plugin inactive')
+      return {}
+    }
 
     registerShutdown(tracerProvider, loggerProvider, logError)
 
     const eventHook = createEventHook(tracerProvider, loggerProvider, logError)
-
     const chatMessageHook = createChatMessageHook(tracerProvider, logError)
-
     const toolHooks = createToolExecuteHooks(tracerProvider, logError)
 
-    const signals = [
-      backend.hasTraces ? 'traces' : null,
-      backend.hasLogs ? 'logs' : null,
-    ].filter(Boolean).join(', ')
+    const backendNames = backends.map((b: BackendEntry) => b.name).join(', ')
+    await logInfo(
+      `Initialized — backends: ${backendNames} (${backends.length} active), service: ${config.serviceName}`,
+    )
 
-    await logInfo(`Initialized — endpoints: ${signals} (${backend.name}), service: ${config.serviceName}`)
-    if (backend.tracesUrl) {
-      await logInfo(`Traces endpoint: ${sanitizeUrl(backend.tracesUrl)}`)
-    }
-    if (backend.logsUrl) {
-      await logInfo(`Logs endpoint: ${sanitizeUrl(backend.logsUrl)}`)
+    for (const backend of backends) {
+      await logInfo(`Backend [${backend.name}]: ${backend.endpointDisplay}`)
     }
 
     return {
