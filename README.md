@@ -49,7 +49,7 @@ At least one endpoint must be set for the plugin to activate. If neither is conf
 Instead of (or in addition to) env vars, create `.opencode/plugins/otel.json`. An example is included in the npm package — copy and edit:
 
 ```bash
-cp node_modules/opencode-otel/otel.json.example .opencode/plugins/otel.json
+mkdir -p .opencode/plugins && cp node_modules/opencode-otel/otel.json.example .opencode/plugins/otel.json
 ```
 
 The example file covers all supported fields including Langfuse credentials and `${VAR}` placeholder syntax for env var resolution:
