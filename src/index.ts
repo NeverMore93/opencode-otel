@@ -23,7 +23,10 @@ function sanitizeUrl(raw: string): string {
       url.searchParams.set(key, 'REDACTED')
     })
     return url.toString()
-  } catch {
+  } catch (err) {
+    console.warn(
+      `[opencode-otel] Failed to parse endpoint URL: ${err instanceof Error ? err.message : String(err)}`,
+    )
     return '<invalid URL>'
   }
 }
