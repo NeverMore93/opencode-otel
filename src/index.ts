@@ -14,6 +14,17 @@ import { createToolExecuteHooks } from './hooks/tool-execute.ts'
 
 const PLUGIN_NAME = 'opencode-otel'
 
+function sanitizeUrl(raw: string): string {
+  try {
+    const url = new URL(raw)
+    url.username = ''
+    url.password = ''
+    return url.toString()
+  } catch {
+    return raw
+  }
+}
+
 interface PluginContext {
   readonly client: {
     readonly app: {
@@ -69,10 +80,10 @@ export default async function plugin(ctx: PluginContext) {
 
     await logInfo(`Initialized — endpoints: ${signals} (${backend.name}), service: ${config.serviceName}`)
     if (backend.tracesUrl) {
-      await logInfo(`Traces endpoint: ${backend.tracesUrl}`)
+      await logInfo(`Traces endpoint: ${sanitizeUrl(backend.tracesUrl)}`)
     }
     if (backend.logsUrl) {
-      await logInfo(`Logs endpoint: ${backend.logsUrl}`)
+      await logInfo(`Logs endpoint: ${sanitizeUrl(backend.logsUrl)}`)
     }
 
     return {
