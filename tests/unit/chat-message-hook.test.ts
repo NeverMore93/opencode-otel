@@ -155,6 +155,62 @@ describe('createChatMessageHook', () => {
     expect(errors).toHaveLength(0)
   })
 
+  test('includes messageID and variant when provided', async () => {
+    const sessionID = uniqueID()
+    const tracer = provider.getTracer('test')
+    const rootSpan = tracer.startSpan('session.root')
+    const traceCtx = trace.setSpan(otelContext.active(), rootSpan)
+    createSession(sessionID, traceCtx, rootSpan)
+
+    const hook = createChatMessageHook(provider, () => {})
+
+    await hook(
+      {
+        sessionID,
+        agent: 'coder',
+        model: { providerID: 'anthropic', modelID: 'claude-3-5-sonnet' },
+        messageID: 'msg_abc123',
+        variant: 'primary',
+      },
+      undefined,
+    )
+
+    rootSpan.end()
+    endSession(sessionID)
+
+    const msgSpan = exporter.getFinishedSpans().find((s) => s.name === 'chat.message')
+    expect(msgSpan).toBeDefined()
+    expect(msgSpan!.attributes['opencode.message.id']).toBe('msg_abc123')
+    expect(msgSpan!.attributes['opencode.message.variant']).toBe('primary')
+  })
+
+  test('omits messageID and variant when not provided', async () => {
+    const sessionID = uniqueID()
+    const tracer = provider.getTracer('test')
+    const rootSpan = tracer.startSpan('session.root')
+    const traceCtx = trace.setSpan(otelContext.active(), rootSpan)
+    createSession(sessionID, traceCtx, rootSpan)
+
+    const hook = createChatMessageHook(provider, () => {})
+
+    await hook(
+      {
+        sessionID,
+        agent: 'coder',
+        model: { providerID: 'anthropic', modelID: 'claude-3-5-sonnet' },
+      },
+      undefined,
+    )
+
+    rootSpan.end()
+    endSession(sessionID)
+
+    const msgSpan = exporter.getFinishedSpans().find((s) => s.name === 'chat.message')
+    expect(msgSpan).toBeDefined()
+    expect(msgSpan!.attributes['opencode.message.id']).toBeUndefined()
+    expect(msgSpan!.attributes['opencode.message.variant']).toBeUndefined()
+  })
+
   test('truncates long attribute values to 256 characters', async () => {
     const sessionID = uniqueID()
     const tracer = provider.getTracer('test')

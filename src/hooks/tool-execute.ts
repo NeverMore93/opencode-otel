@@ -87,6 +87,16 @@ export function createToolExecuteHooks(
         span.setAttribute('opencode.tool.title', truncateString(input.title, TITLE_MAX_LEN))
       }
 
+      if (input.metadata !== undefined && typeof input.metadata === 'object' && input.metadata !== null) {
+        for (const [key, value] of Object.entries(input.metadata as Record<string, unknown>)) {
+          if (typeof value === 'string' && value !== '') {
+            span.setAttribute(`opencode.tool.metadata.${key}`, truncateString(value))
+          } else if (typeof value === 'number') {
+            span.setAttribute(`opencode.tool.metadata.${key}`, value)
+          }
+        }
+      }
+
       span.setStatus({ code: SpanStatusCode.OK })
       span.end()
     } catch (err) {
