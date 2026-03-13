@@ -27,11 +27,21 @@ export interface Providers {
  * - service.version: plugin package version
  * - service.instance.id: "{hostname}-{pid}"
  */
-export function initProviders(config: OtelConfig): Providers {
+export interface PluginContextAttrs {
+  readonly directory?: string
+  readonly project?: string
+}
+
+export function initProviders(
+  config: OtelConfig,
+  pluginContext?: PluginContextAttrs,
+): Providers {
   const resource = resourceFromAttributes({
     'service.name': config.serviceName,
     'service.version': pkg.version,
     'service.instance.id': `${getHostname()}-${process.pid}`,
+    ...(pluginContext?.directory ? { 'opencode.directory': pluginContext.directory } : {}),
+    ...(pluginContext?.project ? { 'opencode.project': pluginContext.project } : {}),
   })
 
   const processorSet = createProcessors(config)

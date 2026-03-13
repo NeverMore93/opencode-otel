@@ -117,11 +117,27 @@ TracerProvider
 
 ```
 session (root span)
-├── chat.message (child span) — agent, model.provider, model.id
-├── tool.bash (child span) — tool.name, tool.call.id
-├── tool.read (child span) — tool.name, tool.call.id
+│  Resource: opencode.directory, opencode.project
+│  Attributes: opencode.session.id, opencode.session.* (custom metadata)
+├── chat.message (child span) — agent, model.provider, model.id, message.id, message.variant
+├── tool.bash (child span) — tool.name, tool.call.id, tool.metadata.*
+├── tool.read (child span) — tool.name, tool.call.id, tool.metadata.*
 └── ... more tool spans
 ```
+
+### Automatic Attribute Forwarding
+
+Custom metadata passed when creating OpenCode sessions is automatically forwarded to trace attributes — no configuration needed:
+
+| Level | Attributes | Source |
+|-------|-----------|--------|
+| Resource (all spans) | `opencode.directory`, `opencode.project` | Plugin context |
+| Session root span | `opencode.session.*` | `session.created` event info |
+| Message spans | `opencode.message.id`, `opencode.message.variant` | `chat.message` hook |
+| Tool spans | `opencode.tool.metadata.*` | `tool.execute.after` hook |
+| Log records | `opencode.event.*` | Event properties |
+
+Only safe string/number values are forwarded. Objects, arrays, and empty strings are skipped. All values truncated to 256 characters.
 
 ## Event Log Records
 
@@ -150,7 +166,7 @@ High-frequency events (`message.part.updated`) are filtered out by default.
 
 ```bash
 bun install             # Install dependencies
-bun test                # Run 114 tests
+bun test                # Run 137+ tests
 bun test --coverage     # 97%+ coverage
 bun run build           # ESM bundle → dist/
 ```

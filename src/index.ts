@@ -21,6 +21,8 @@ interface PluginContext {
       log(opts: { body: Record<string, unknown> }): Promise<void>
     }
   }
+  readonly directory?: string
+  readonly project?: string
 }
 
 /**
@@ -53,7 +55,10 @@ export default async function plugin(ctx: PluginContext) {
       return {}
     }
 
-    const { tracerProvider, loggerProvider, backends } = initProviders(config)
+    const { tracerProvider, loggerProvider, backends } = initProviders(config, {
+      directory: ctx.directory,
+      project: ctx.project,
+    })
 
     if (backends.length === 0) {
       await logInfo('No backends initialized — plugin inactive')

@@ -21,20 +21,31 @@
 - **OTLP HTTP only** — no gRPC (Bun doesn't support `@grpc/grpc-js` native modules)
 - **Data sensitivity** — never include message text, file contents, tool output, or credentials in spans/logs
 
+## Attribute Forwarding
+
+Properties from OpenCode are automatically forwarded to spans at four levels:
+
+1. **Resource attributes** (all spans): `opencode.directory`, `opencode.project` — from plugin context
+2. **Root span attributes** (per session): `opencode.session.*` — from `session.created` event's `properties.info` (all safe string/number fields)
+3. **Span attributes** (per hook): `opencode.message.id`, `opencode.message.variant`, `opencode.tool.metadata.*` — from dedicated hook inputs
+4. **LogRecord attributes** (per event): `opencode.event.*` — safe string/number fields from event properties
+
+No additional configuration needed — custom metadata passed via OpenCode API session creation appears automatically in Langfuse traces.
+
 ## Architecture
 
-```
+```text
 Plugin Entry (src/index.ts)
   ├─ Config (src/config.ts) ← env vars + ~/.config/opencode/plugins/otel.json
   ├─ Telemetry
-  │   ├─ provider.ts   ← TracerProvider + LoggerProvider setup
+  │   ├─ provider.ts   ← TracerProvider + LoggerProvider setup (+ pluginContext → Resource)
   │   ├─ backends.ts   ← Backend processor factories (Langfuse SDK + Generic OTLP fan-out)
   │   ├─ context.ts    ← Session context map (Bun workaround)
   │   └─ shutdown.ts   ← Graceful shutdown
   └─ Hooks (source-aware: dedicated hooks = 'primary', event hook = 'fallback')
-      ├─ event.ts         ← event hook → OTEL log records + session root spans + fallback message/tool spans
-      ├─ chat-message.ts  ← chat.message → primary message child spans (richer attributes)
-      └─ tool-execute.ts  ← tool.execute.before/after → primary tool child spans (richer attributes)
+      ├─ event.ts         ← event hook → OTEL log records + session root spans + fallback message/tool spans + attribute forwarding
+      ├─ chat-message.ts  ← chat.message → primary message child spans (+ messageID/variant)
+      └─ tool-execute.ts  ← tool.execute.before/after → primary tool child spans (+ metadata forwarding)
 ```
 
 ## Backend Configuration

@@ -248,6 +248,37 @@ describe('createToolExecuteHooks — after', () => {
     expect((toolSpan!.attributes['opencode.tool.title'] as string).length).toBe(256)
   })
 
+  test('forwards safe metadata fields as span attributes', async () => {
+    const sessionID = uniqueID()
+    const callID = uniqueCallID()
+    const tracer = provider.getTracer('test')
+    const rootSpan = tracer.startSpan('session.root')
+    const traceCtx = trace.setSpan(otelContext.active(), rootSpan)
+    createSession(sessionID, traceCtx, rootSpan)
+
+    const { before, after } = createToolExecuteHooks(provider, () => {})
+
+    await before({ sessionID, tool: 'bash', callID }, undefined)
+    await after({
+      sessionID,
+      tool: 'bash',
+      callID,
+      title: 'Run command',
+      metadata: { region: 'us-east-1', retries: 3, nested: { x: 1 }, empty: '' },
+    }, undefined)
+
+    rootSpan.end()
+    endSession(sessionID)
+
+    const toolSpan = exporter.getFinishedSpans().find((s) => s.name === 'tool.bash')
+    expect(toolSpan).toBeDefined()
+    expect(toolSpan!.attributes['opencode.tool.metadata.region']).toBe('us-east-1')
+    expect(toolSpan!.attributes['opencode.tool.metadata.retries']).toBe(3)
+    // nested objects and empty strings should be skipped
+    expect(toolSpan!.attributes['opencode.tool.metadata.nested']).toBeUndefined()
+    expect(toolSpan!.attributes['opencode.tool.metadata.empty']).toBeUndefined()
+  })
+
   test('does NOT include output in span attributes', async () => {
     const sessionID = uniqueID()
     const callID = uniqueCallID()

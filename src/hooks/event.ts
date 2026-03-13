@@ -79,17 +79,63 @@ function extractSessionID(eventType: string, properties: Record<string, unknown>
 }
 
 /**
+ * Extract safe (string/number) attributes from event properties for forwarding.
+ * Skips sessionID (already handled) and info (handled separately for session.created).
+ */
+function safeEventAttributes(
+  properties: Record<string, unknown>,
+): Record<string, string | number> {
+  const result: Record<string, string | number> = {}
+  for (const [key, value] of Object.entries(properties)) {
+    if (key === 'sessionID' || key === 'info') continue
+    if (typeof value === 'string' && value !== '') {
+      result[`opencode.event.${key}`] = truncateString(value)
+    } else if (typeof value === 'number') {
+      result[`opencode.event.${key}`] = value
+    }
+  }
+  return result
+}
+
+/**
+ * Forward session.created info properties to the root span as attributes.
+ * Extracts all safe string/number fields from properties.info.
+ */
+function forwardSessionAttributes(
+  sessionID: string,
+  properties: Record<string, unknown>,
+): void {
+  const session = getSession(sessionID)
+  if (session === undefined) return
+
+  const info = properties['info']
+  if (typeof info !== 'object' || info === null) return
+
+  for (const [key, value] of Object.entries(info as Record<string, unknown>)) {
+    if (key === 'id') continue // already set as opencode.session.id
+    if (typeof value === 'string' && value !== '') {
+      session.rootSpan.setAttribute(`opencode.session.${key}`, truncateString(value))
+    } else if (typeof value === 'number') {
+      session.rootSpan.setAttribute(`opencode.session.${key}`, value)
+    }
+  }
+}
+
+/**
  * Emit a LogRecord for the event via the loggerProvider.
  */
 function emitLogRecord(
   loggerProvider: LoggerProvider,
   eventType: string,
   sessionID: string,
+  properties: Record<string, unknown>,
 ): void {
   const severity = getSeverity(eventType)
+  const eventAttrs = safeEventAttributes(properties)
   const attrs = truncateAttributes({
     'opencode.event.type': eventType,
     ...(sessionID !== '' ? { 'opencode.session.id': sessionID } : {}),
+    ...eventAttrs,
   })
 
   const logger = loggerProvider.getLogger(LOGGER_NAME)
@@ -223,7 +269,11 @@ export function createEventHook(
 
       if (!isAllowedEvent(input.type)) return
 
-      const sessionID = extractSessionID(input.type, input.properties ?? {})
+      const properties = input.properties ?? {}
+      const sessionID = extractSessionID(input.type, properties)
+
+      // --- Debug logging for runtime visibility ---
+      console.error(`[opencode-otel] event: ${input.type} session=${sessionID || 'none'}`)
 
       // --- Lazy root span creation ---
       // Ensures a root span exists for any event carrying a sessionID.
@@ -231,6 +281,11 @@ export function createEventHook(
       // created before the plugin loaded) that never fired session.created.
       if (sessionID !== '') {
         getOrCreateSession(sessionID, tracerProvider)
+      }
+
+      // --- Forward session.created info to root span attributes ---
+      if (input.type === 'session.created' && sessionID !== '') {
+        forwardSessionAttributes(sessionID, properties)
       }
 
       // --- Session lifecycle ---
@@ -249,13 +304,13 @@ export function createEventHook(
 
       // --- Tool lifecycle (fallback for Feishu mode) ---
       if (input.type === 'tool.start') {
-        handleToolStart(tracerProvider, sessionID, input.properties ?? {})
+        handleToolStart(tracerProvider, sessionID, properties)
       } else if (input.type === 'tool.end') {
-        handleToolEnd(sessionID, input.properties ?? {})
+        handleToolEnd(sessionID, properties)
       }
 
       // --- Log record for every allowed event ---
-      emitLogRecord(loggerProvider, input.type, sessionID)
+      emitLogRecord(loggerProvider, input.type, sessionID, properties)
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
       logError(`Event hook error [${input?.type ?? 'unknown'}]: ${message}`)

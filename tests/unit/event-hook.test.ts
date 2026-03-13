@@ -419,6 +419,82 @@ describe('tool lifecycle via bus events', () => {
 })
 
 // ---------------------------------------------------------------------------
+// session.created — forwards info properties to root span attributes
+// ---------------------------------------------------------------------------
+
+describe('session.created attribute forwarding', () => {
+  test('forwards string/number fields from properties.info to root span', async () => {
+    const hook = createEventHook(tracerProvider, loggerProvider, logError)
+    const sessionID = uniqueID()
+
+    await hook(makeEvent('session.created', undefined, {
+      info: {
+        id: sessionID,
+        employeeId: 'E12345',
+        workspacePath: '/home/user/project',
+        priority: 42,
+      },
+      sessionID,
+    }))
+
+    const session = getSession(sessionID)
+    expect(session).toBeDefined()
+
+    session!.rootSpan.end()
+
+    const spans = exporter.getFinishedSpans()
+    const rootSpan = spans.find((s) => s.name === 'session')
+    expect(rootSpan).toBeDefined()
+    expect(rootSpan!.attributes['opencode.session.employeeId']).toBe('E12345')
+    expect(rootSpan!.attributes['opencode.session.workspacePath']).toBe('/home/user/project')
+    expect(rootSpan!.attributes['opencode.session.priority']).toBe(42)
+    // id should be skipped (already set as opencode.session.id)
+    expect(rootSpan!.attributes['opencode.session.id']).toBe(sessionID)
+  })
+
+  test('skips non-string/number fields in info', async () => {
+    const hook = createEventHook(tracerProvider, loggerProvider, logError)
+    const sessionID = uniqueID()
+
+    await hook(makeEvent('session.created', undefined, {
+      info: {
+        id: sessionID,
+        nested: { deep: true },
+        tags: ['a', 'b'],
+        empty: '',
+      },
+      sessionID,
+    }))
+
+    const session = getSession(sessionID)
+    expect(session).toBeDefined()
+
+    session!.rootSpan.end()
+
+    const spans = exporter.getFinishedSpans()
+    const rootSpan = spans.find((s) => s.name === 'session')
+    expect(rootSpan).toBeDefined()
+    // nested objects, arrays, empty strings should NOT be forwarded
+    expect(rootSpan!.attributes['opencode.session.nested']).toBeUndefined()
+    expect(rootSpan!.attributes['opencode.session.tags']).toBeUndefined()
+    expect(rootSpan!.attributes['opencode.session.empty']).toBeUndefined()
+  })
+
+  test('is a no-op when properties.info is missing', async () => {
+    const hook = createEventHook(tracerProvider, loggerProvider, logError)
+    const sessionID = uniqueID()
+
+    await hook(makeEvent('session.created', sessionID))
+
+    const session = getSession(sessionID)
+    expect(session).toBeDefined()
+    expect(errors).toHaveLength(0)
+
+    session!.rootSpan.end()
+  })
+})
+
+// ---------------------------------------------------------------------------
 // Source-aware: fallback message span discarded when primary exists
 // ---------------------------------------------------------------------------
 
