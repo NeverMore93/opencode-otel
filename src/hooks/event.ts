@@ -160,7 +160,7 @@ function handleToolStart(
   const callID = typeof properties['callID'] === 'string' ? properties['callID'] : ''
   if (callID === '') return
 
-  const toolName = typeof properties['tool'] === 'string' ? properties['tool'] : 'unknown'
+  const toolName = (typeof properties['tool'] === 'string' && properties['tool'] !== '') ? properties['tool'] : 'unknown'
 
   const tracer = tracerProvider.getTracer(LOGGER_NAME)
   const attributes = truncateAttributes({

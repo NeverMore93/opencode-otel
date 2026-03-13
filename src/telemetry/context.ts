@@ -84,7 +84,10 @@ export function setMessageSpan(
   source: 'fallback' | 'primary' = 'primary',
 ): void {
   const session = sessions.get(sessionID)
-  if (session === undefined) return
+  if (session === undefined) {
+    span.end()
+    return
+  }
   if (session.messageSpan !== undefined) {
     if (source === 'fallback') {
       span.end()
@@ -108,7 +111,10 @@ export function addToolSpan(
   source: 'fallback' | 'primary' = 'primary',
 ): void {
   const session = sessions.get(sessionID)
-  if (session === undefined) return
+  if (session === undefined) {
+    span.end()
+    return
+  }
   const existing = session.pendingTools.get(callID)
   if (existing !== undefined) {
     if (source === 'fallback') {
