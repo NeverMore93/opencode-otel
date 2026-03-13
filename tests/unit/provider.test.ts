@@ -25,7 +25,7 @@ describe('pluginContext resource attributes', () => {
     })
   }
 
-  test('includes opencode.directory and opencode.project when provided', () => {
+  test('includes opencode.directory and opencode.project when provided', async () => {
     const resource = buildResource({
       directory: '/home/user/project',
       project: 'my-project',
@@ -45,10 +45,10 @@ describe('pluginContext resource attributes', () => {
     expect(spans[0]!.resource.attributes['opencode.directory']).toBe('/home/user/project')
     expect(spans[0]!.resource.attributes['opencode.project']).toBe('my-project')
 
-    provider.shutdown()
+    await provider.shutdown()
   })
 
-  test('omits opencode.directory and opencode.project when not provided', () => {
+  test('omits opencode.directory and opencode.project when not provided', async () => {
     const resource = buildResource()
 
     const exporter = new InMemorySpanExporter()
@@ -65,10 +65,10 @@ describe('pluginContext resource attributes', () => {
     expect(spans[0]!.resource.attributes['opencode.directory']).toBeUndefined()
     expect(spans[0]!.resource.attributes['opencode.project']).toBeUndefined()
 
-    provider.shutdown()
+    await provider.shutdown()
   })
 
-  test('omits empty string values for directory/project', () => {
+  test('omits empty string values for directory/project', async () => {
     const resource = buildResource({ directory: '', project: '' })
 
     const exporter = new InMemorySpanExporter()
@@ -85,6 +85,6 @@ describe('pluginContext resource attributes', () => {
     expect(spans[0]!.resource.attributes['opencode.directory']).toBeUndefined()
     expect(spans[0]!.resource.attributes['opencode.project']).toBeUndefined()
 
-    provider.shutdown()
+    await provider.shutdown()
   })
 })

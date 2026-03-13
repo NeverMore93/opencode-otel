@@ -23,7 +23,7 @@
 
 ## Attribute Forwarding
 
-Properties from OpenCode are automatically forwarded to spans at three levels:
+Properties from OpenCode are automatically forwarded to spans at four levels:
 
 1. **Resource attributes** (all spans): `opencode.directory`, `opencode.project` — from plugin context
 2. **Root span attributes** (per session): `opencode.session.*` — from `session.created` event's `properties.info` (all safe string/number fields)

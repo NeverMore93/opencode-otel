@@ -273,7 +273,7 @@ export function createEventHook(
       const sessionID = extractSessionID(input.type, properties)
 
       // --- Debug logging for runtime visibility ---
-      console.info(`[opencode-otel] event: ${input.type} session=${sessionID || 'none'}`)
+      console.error(`[opencode-otel] event: ${input.type} session=${sessionID || 'none'}`)
 
       // --- Lazy root span creation ---
       // Ensures a root span exists for any event carrying a sessionID.
