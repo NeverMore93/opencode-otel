@@ -57,7 +57,7 @@ export function createChatMessageHook(
 
       const span = tracer.startSpan('chat.message', { attributes }, session.traceCtx)
 
-      setMessageSpan(input.sessionID, span)
+      setMessageSpan(input.sessionID, span, 'primary')
     } catch (err) {
       logError(
         `chat.message hook error: ${err instanceof Error ? err.message : String(err)}`,
