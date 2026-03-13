@@ -34,7 +34,7 @@ No additional configuration needed — custom metadata passed via OpenCode API s
 
 ## Architecture
 
-```
+```text
 Plugin Entry (src/index.ts)
   ├─ Config (src/config.ts) ← env vars + ~/.config/opencode/plugins/otel.json
   ├─ Telemetry
