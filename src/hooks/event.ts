@@ -1,16 +1,21 @@
 /**
- * OpenCode event hook — emits OTEL spans and log records for session events.
+ * OpenCode event hook — emits OTEL spans and log records for bus events.
+ *
+ * Lazy root span creation:
+ *   Any event with a sessionID lazily creates a root "session" span via
+ *   getOrCreateSession(). This handles pre-existing sessions (e.g. Feishu
+ *   long-lived sessions) that never fired session.created.
  *
  * Session lifecycle:
- *   session.created  → start root "session" span, store in context map
  *   session.idle     → end root span (via endSession)
  *   session.deleted  → end root span (via endSession)
  *   session.error    → mark root span ERROR (session stays active)
  *
- * All allowed events additionally emit an OTEL LogRecord.
+ * Message lifecycle:
+ *   message.created   → start "message" child span under session root
+ *   message.completed → end message child span
  *
- * Bun AsyncLocalStorage is broken — explicit context map is used instead of
- * context.with() for span propagation.
+ * All allowed events additionally emit an OTEL LogRecord.
  *
  * IMPORTANT: OpenCode plugin SDK passes { event: Event } to the event hook,
  * where Event has { type, properties }. The event is nested one level deeper
@@ -19,9 +24,9 @@
 
 import { type BasicTracerProvider } from '@opentelemetry/sdk-trace-base'
 import { type LoggerProvider } from '@opentelemetry/sdk-logs'
-import { SpanStatusCode, context as otelContext, trace } from '@opentelemetry/api'
+import { SpanStatusCode } from '@opentelemetry/api'
 import { SeverityNumber } from '@opentelemetry/api-logs'
-import { createSession, endSession, getSession } from '../telemetry/context.ts'
+import { addToolSpan, endSession, getOrCreateSession, getSession, removeToolSpan, setMessageSpan } from '../telemetry/context.ts'
 import { truncateAttributes, truncateString } from '../telemetry/attributes.ts'
 import { getSeverity, isAllowedEvent } from './severity.ts'
 
@@ -97,26 +102,6 @@ function emitLogRecord(
 }
 
 /**
- * Handle session.created:
- *   - Start a root "session" span with opencode.session.id attribute.
- *   - Store span + context in the session map.
- */
-function handleSessionCreated(
-  tracerProvider: BasicTracerProvider,
-  sessionID: string,
-): void {
-  if (sessionID === '') return
-
-  const tracer = tracerProvider.getTracer(LOGGER_NAME)
-  const rootSpan = tracer.startSpan('session', undefined, otelContext.active())
-  rootSpan.setAttribute('opencode.session.id', truncateString(sessionID))
-
-  // Build the context carrying the root span so child spans can be parented.
-  const traceCtx = trace.setSpan(otelContext.active(), rootSpan)
-  createSession(sessionID, traceCtx, rootSpan)
-}
-
-/**
  * Handle session.idle / session.deleted:
  *   - Clean up orphaned child spans (endSession handles this).
  *   - End the root span.
@@ -144,6 +129,83 @@ function handleSessionError(sessionID: string): void {
 }
 
 /**
+ * Handle message.created:
+ *   - Start a "message" child span under the session root.
+ */
+function handleMessageCreated(
+  tracerProvider: BasicTracerProvider,
+  sessionID: string,
+): void {
+  const session = getSession(sessionID)
+  if (session === undefined) return
+
+  const tracer = tracerProvider.getTracer(LOGGER_NAME)
+  const messageSpan = tracer.startSpan('message', undefined, session.traceCtx)
+  setMessageSpan(sessionID, messageSpan, 'fallback')
+}
+
+/**
+ * Handle tool.start:
+ *   - Start a tool child span under the session root (fallback source).
+ *   - Discarded if tool.execute.before already created a primary span.
+ */
+function handleToolStart(
+  tracerProvider: BasicTracerProvider,
+  sessionID: string,
+  properties: Record<string, unknown>,
+): void {
+  const session = getSession(sessionID)
+  if (session === undefined) return
+
+  const callID = typeof properties['callID'] === 'string' ? properties['callID'] : ''
+  if (callID === '') return
+
+  const toolName = (typeof properties['tool'] === 'string' && properties['tool'] !== '') ? properties['tool'] : 'unknown'
+
+  const tracer = tracerProvider.getTracer(LOGGER_NAME)
+  const attributes = truncateAttributes({
+    'opencode.session.id': sessionID,
+    'opencode.tool.name': toolName,
+    'opencode.tool.call.id': callID,
+  })
+
+  const span = tracer.startSpan(`tool.${toolName}`, { attributes }, session.traceCtx)
+  addToolSpan(sessionID, callID, span, 'fallback')
+}
+
+/**
+ * Handle tool.end:
+ *   - End the pending tool span for the given callID.
+ */
+function handleToolEnd(
+  sessionID: string,
+  properties: Record<string, unknown>,
+): void {
+  const callID = typeof properties['callID'] === 'string' ? properties['callID'] : ''
+  if (callID === '') return
+
+  const span = removeToolSpan(sessionID, callID)
+  if (span === undefined) return
+
+  span.setStatus({ code: SpanStatusCode.OK })
+  span.end()
+}
+
+/**
+ * Handle message.completed:
+ *   - End the active message span.
+ */
+function handleMessageCompleted(sessionID: string): void {
+  const session = getSession(sessionID)
+  if (session === undefined) return
+
+  if (session.messageSpan !== undefined) {
+    session.messageSpan.end()
+    session.messageSpan = undefined
+  }
+}
+
+/**
  * Factory — creates a bound event hook function.
  *
  * @param tracerProvider  Initialised BasicTracerProvider.
@@ -163,13 +225,33 @@ export function createEventHook(
 
       const sessionID = extractSessionID(input.type, input.properties ?? {})
 
+      // --- Lazy root span creation ---
+      // Ensures a root span exists for any event carrying a sessionID.
+      // Handles pre-existing sessions (e.g. Feishu long-lived sessions
+      // created before the plugin loaded) that never fired session.created.
+      if (sessionID !== '') {
+        getOrCreateSession(sessionID, tracerProvider)
+      }
+
       // --- Session lifecycle ---
-      if (input.type === 'session.created') {
-        handleSessionCreated(tracerProvider, sessionID)
-      } else if (input.type === 'session.idle' || input.type === 'session.deleted') {
+      if (input.type === 'session.idle' || input.type === 'session.deleted') {
         handleSessionEnd(sessionID)
       } else if (input.type === 'session.error') {
         handleSessionError(sessionID)
+      }
+
+      // --- Message lifecycle ---
+      if (input.type === 'message.created') {
+        handleMessageCreated(tracerProvider, sessionID)
+      } else if (input.type === 'message.completed') {
+        handleMessageCompleted(sessionID)
+      }
+
+      // --- Tool lifecycle (fallback for Feishu mode) ---
+      if (input.type === 'tool.start') {
+        handleToolStart(tracerProvider, sessionID, input.properties ?? {})
+      } else if (input.type === 'tool.end') {
+        handleToolEnd(sessionID, input.properties ?? {})
       }
 
       // --- Log record for every allowed event ---

@@ -130,6 +130,73 @@ describe('setMessageSpan', () => {
 })
 
 // ---------------------------------------------------------------------------
+// setMessageSpan — source-aware behavior
+// ---------------------------------------------------------------------------
+
+describe('setMessageSpan source-aware', () => {
+  test('fallback is discarded when a primary span already exists', () => {
+    const id = uniqueID()
+    const rootSpan = tracer.startSpan('root')
+    const primarySpan = tracer.startSpan('primary-msg')
+    const fallbackSpan = tracer.startSpan('fallback-msg')
+    createSession(id, otelContext.active(), rootSpan)
+
+    setMessageSpan(id, primarySpan, 'primary')
+    setMessageSpan(id, fallbackSpan, 'fallback')
+
+    // Primary should still be active — fallback was discarded
+    expect(getSession(id)!.messageSpan).toBe(primarySpan)
+
+    // Fallback should have been ended (discarded)
+    const finished = exporter.getFinishedSpans()
+    expect(finished.some((s) => s.name === 'fallback-msg')).toBe(true)
+
+    primarySpan.end()
+    rootSpan.end()
+    endSession(id)
+  })
+
+  test('primary replaces an existing fallback span', () => {
+    const id = uniqueID()
+    const rootSpan = tracer.startSpan('root')
+    const fallbackSpan = tracer.startSpan('fallback-msg')
+    const primarySpan = tracer.startSpan('primary-msg')
+    createSession(id, otelContext.active(), rootSpan)
+
+    setMessageSpan(id, fallbackSpan, 'fallback')
+    expect(getSession(id)!.messageSpan).toBe(fallbackSpan)
+
+    setMessageSpan(id, primarySpan, 'primary')
+
+    // Primary should have replaced fallback
+    expect(getSession(id)!.messageSpan).toBe(primarySpan)
+
+    // Fallback should have been ended
+    const finished = exporter.getFinishedSpans()
+    expect(finished.some((s) => s.name === 'fallback-msg')).toBe(true)
+
+    primarySpan.end()
+    rootSpan.end()
+    endSession(id)
+  })
+
+  test('fallback sets when no existing span', () => {
+    const id = uniqueID()
+    const rootSpan = tracer.startSpan('root')
+    const fallbackSpan = tracer.startSpan('fallback-msg')
+    createSession(id, otelContext.active(), rootSpan)
+
+    setMessageSpan(id, fallbackSpan, 'fallback')
+
+    expect(getSession(id)!.messageSpan).toBe(fallbackSpan)
+
+    fallbackSpan.end()
+    rootSpan.end()
+    endSession(id)
+  })
+})
+
+// ---------------------------------------------------------------------------
 // addToolSpan / removeToolSpan
 // ---------------------------------------------------------------------------
 
@@ -186,6 +253,69 @@ describe('addToolSpan / removeToolSpan', () => {
     // Should not throw
     addToolSpan('unknown-session', 'call-1', toolSpan)
     toolSpan.end()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// addToolSpan — source-aware behavior
+// ---------------------------------------------------------------------------
+
+describe('addToolSpan source-aware', () => {
+  test('fallback is discarded when a primary span exists for same callID', () => {
+    const id = uniqueID()
+    const rootSpan = tracer.startSpan('root')
+    const primaryTool = tracer.startSpan('primary-tool')
+    const fallbackTool = tracer.startSpan('fallback-tool')
+    createSession(id, otelContext.active(), rootSpan)
+
+    addToolSpan(id, 'call-1', primaryTool, 'primary')
+    addToolSpan(id, 'call-1', fallbackTool, 'fallback')
+
+    expect(getSession(id)!.pendingTools.get('call-1')).toBe(primaryTool)
+
+    const finished = exporter.getFinishedSpans()
+    expect(finished.some((s) => s.name === 'fallback-tool')).toBe(true)
+
+    primaryTool.end()
+    rootSpan.end()
+    endSession(id)
+  })
+
+  test('primary replaces an existing fallback tool span', () => {
+    const id = uniqueID()
+    const rootSpan = tracer.startSpan('root')
+    const fallbackTool = tracer.startSpan('fallback-tool')
+    const primaryTool = tracer.startSpan('primary-tool')
+    createSession(id, otelContext.active(), rootSpan)
+
+    addToolSpan(id, 'call-1', fallbackTool, 'fallback')
+    expect(getSession(id)!.pendingTools.get('call-1')).toBe(fallbackTool)
+
+    addToolSpan(id, 'call-1', primaryTool, 'primary')
+
+    expect(getSession(id)!.pendingTools.get('call-1')).toBe(primaryTool)
+
+    const finished = exporter.getFinishedSpans()
+    expect(finished.some((s) => s.name === 'fallback-tool')).toBe(true)
+
+    primaryTool.end()
+    rootSpan.end()
+    endSession(id)
+  })
+
+  test('fallback sets when no existing span for callID', () => {
+    const id = uniqueID()
+    const rootSpan = tracer.startSpan('root')
+    const fallbackTool = tracer.startSpan('fallback-tool')
+    createSession(id, otelContext.active(), rootSpan)
+
+    addToolSpan(id, 'call-1', fallbackTool, 'fallback')
+
+    expect(getSession(id)!.pendingTools.get('call-1')).toBe(fallbackTool)
+
+    fallbackTool.end()
+    rootSpan.end()
+    endSession(id)
   })
 })
 

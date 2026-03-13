@@ -74,11 +74,25 @@ export function getOrCreateSession(
 
 /**
  * Attach the current message span to a session.
+ *
+ * @param source - `'primary'` (dedicated hook) always sets, ending any existing span.
+ *                 `'fallback'` (event hook) only sets if no span exists; discards otherwise.
  */
-export function setMessageSpan(sessionID: string, span: Span): void {
+export function setMessageSpan(
+  sessionID: string,
+  span: Span,
+  source: 'fallback' | 'primary' = 'primary',
+): void {
   const session = sessions.get(sessionID)
-  if (session === undefined) return
+  if (session === undefined) {
+    span.end()
+    return
+  }
   if (session.messageSpan !== undefined) {
+    if (source === 'fallback') {
+      span.end()
+      return
+    }
     session.messageSpan.end()
   }
   session.messageSpan = span
@@ -86,14 +100,29 @@ export function setMessageSpan(sessionID: string, span: Span): void {
 
 /**
  * Register a pending tool span under its callID.
+ *
+ * @param source - `'primary'` (dedicated hook) always sets, ending any existing span for callID.
+ *                 `'fallback'` (event hook) only sets if no span exists for callID; discards otherwise.
  */
 export function addToolSpan(
   sessionID: string,
   callID: string,
   span: Span,
+  source: 'fallback' | 'primary' = 'primary',
 ): void {
   const session = sessions.get(sessionID)
-  if (session === undefined) return
+  if (session === undefined) {
+    span.end()
+    return
+  }
+  const existing = session.pendingTools.get(callID)
+  if (existing !== undefined) {
+    if (source === 'fallback') {
+      span.end()
+      return
+    }
+    existing.end()
+  }
   session.pendingTools.set(callID, span)
 }
 

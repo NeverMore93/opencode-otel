@@ -31,10 +31,10 @@ Plugin Entry (src/index.ts)
   │   ├─ backends.ts   ← Backend processor factories (Langfuse SDK + Generic OTLP fan-out)
   │   ├─ context.ts    ← Session context map (Bun workaround)
   │   └─ shutdown.ts   ← Graceful shutdown
-  └─ Hooks
-      ├─ event.ts         ← event hook → OTEL log records + session root spans
-      ├─ chat-message.ts  ← chat.message → message child spans
-      └─ tool-execute.ts  ← tool.execute.before/after → tool child spans
+  └─ Hooks (source-aware: dedicated hooks = 'primary', event hook = 'fallback')
+      ├─ event.ts         ← event hook → OTEL log records + session root spans + fallback message/tool spans
+      ├─ chat-message.ts  ← chat.message → primary message child spans (richer attributes)
+      └─ tool-execute.ts  ← tool.execute.before/after → primary tool child spans (richer attributes)
 ```
 
 ## Backend Configuration

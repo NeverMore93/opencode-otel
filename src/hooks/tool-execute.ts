@@ -70,7 +70,7 @@ export function createToolExecuteHooks(
 
       const span = tracer.startSpan(`tool.${input.tool}`, { attributes }, session.traceCtx)
 
-      addToolSpan(input.sessionID, input.callID, span)
+      addToolSpan(input.sessionID, input.callID, span, 'primary')
     } catch (err) {
       logError(
         `tool.before hook error: ${err instanceof Error ? err.message : String(err)}`,

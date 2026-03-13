@@ -7,7 +7,7 @@ import {
 import { LoggerProvider } from '@opentelemetry/sdk-logs'
 import { SpanStatusCode } from '@opentelemetry/api'
 import { createEventHook } from '../../src/hooks/event.ts'
-import { getSession } from '../../src/telemetry/context.ts'
+import { endSession, getSession, setMessageSpan, addToolSpan } from '../../src/telemetry/context.ts'
 
 // ---------------------------------------------------------------------------
 // Test infrastructure
@@ -35,10 +35,17 @@ function uniqueID(): string {
   return `session-${Math.random().toString(36).slice(2)}`
 }
 
-function makeEvent(type: string, sessionID?: string): { type: string; properties: Record<string, unknown> } {
+function makeEvent(
+  type: string,
+  sessionID?: string,
+  extra?: Record<string, unknown>,
+): { type: string; properties: Record<string, unknown> } {
   return {
     type,
-    properties: sessionID !== undefined ? { sessionID } : {},
+    properties: {
+      ...(sessionID !== undefined ? { sessionID } : {}),
+      ...extra,
+    },
   }
 }
 
@@ -267,31 +274,172 @@ describe('error boundary', () => {
 })
 
 // ---------------------------------------------------------------------------
-// Allowlisted events emit without creating sessions
+// Lazy session creation + message lifecycle
 // ---------------------------------------------------------------------------
 
-describe('non-lifecycle allowed events', () => {
-  test('message.created processes without creating a session span', async () => {
+describe('lazy session creation and message lifecycle', () => {
+  test('message.created lazily creates root span and starts message child span', async () => {
     const hook = createEventHook(tracerProvider, loggerProvider, logError)
     const sessionID = uniqueID()
 
-    // message.created is allowed but is not a lifecycle event
     await hook(makeEvent('message.created', sessionID))
 
-    // No session should be created (only session.created triggers that)
-    expect(getSession(sessionID)).toBeUndefined()
+    // Lazy creation should have produced a root span + message child span
+    const session = getSession(sessionID)
+    expect(session).toBeDefined()
+    expect(session!.rootSpan).toBeDefined()
+    expect(session!.messageSpan).toBeDefined()
     expect(errors).toHaveLength(0)
+
+    endSession(sessionID)
   })
 
-  test('tool.start processes without throwing', async () => {
+  test('message.completed ends the active message span', async () => {
     const hook = createEventHook(tracerProvider, loggerProvider, logError)
-    await hook(makeEvent('tool.start', uniqueID()))
+    const sessionID = uniqueID()
+
+    await hook(makeEvent('message.created', sessionID))
+    expect(getSession(sessionID)!.messageSpan).toBeDefined()
+
+    await hook(makeEvent('message.completed', sessionID))
+    expect(getSession(sessionID)!.messageSpan).toBeUndefined()
     expect(errors).toHaveLength(0)
+
+    endSession(sessionID)
   })
 
-  test('permission.granted processes without throwing', async () => {
+  test('tool.start lazily creates root span', async () => {
     const hook = createEventHook(tracerProvider, loggerProvider, logError)
-    await hook(makeEvent('permission.granted', uniqueID()))
+    const sessionID = uniqueID()
+
+    await hook(makeEvent('tool.start', sessionID))
+
+    expect(getSession(sessionID)).toBeDefined()
     expect(errors).toHaveLength(0)
+
+    endSession(sessionID)
+  })
+
+  test('permission.granted lazily creates root span', async () => {
+    const hook = createEventHook(tracerProvider, loggerProvider, logError)
+    const sessionID = uniqueID()
+
+    await hook(makeEvent('permission.granted', sessionID))
+
+    expect(getSession(sessionID)).toBeDefined()
+    expect(errors).toHaveLength(0)
+
+    endSession(sessionID)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Tool lifecycle via bus events (fallback)
+// ---------------------------------------------------------------------------
+
+describe('tool lifecycle via bus events', () => {
+  test('tool.start creates a fallback tool span', async () => {
+    const hook = createEventHook(tracerProvider, loggerProvider, logError)
+    const sessionID = uniqueID()
+
+    await hook(makeEvent('session.created', sessionID))
+    await hook(makeEvent('tool.start', sessionID, { callID: 'call-1', tool: 'bash' }))
+
+    const session = getSession(sessionID)
+    expect(session).toBeDefined()
+    expect(session!.pendingTools.get('call-1')).toBeDefined()
+    expect(errors).toHaveLength(0)
+
+    endSession(sessionID)
+  })
+
+  test('tool.end ends the fallback tool span with OK status', async () => {
+    const hook = createEventHook(tracerProvider, loggerProvider, logError)
+    const sessionID = uniqueID()
+
+    await hook(makeEvent('session.created', sessionID))
+    await hook(makeEvent('tool.start', sessionID, { callID: 'call-1', tool: 'read' }))
+    await hook(makeEvent('tool.end', sessionID, { callID: 'call-1' }))
+
+    const session = getSession(sessionID)
+    expect(session!.pendingTools.has('call-1')).toBe(false)
+
+    const spans = exporter.getFinishedSpans()
+    const toolSpan = spans.find((s) => s.name === 'tool.read')
+    expect(toolSpan).toBeDefined()
+    expect(toolSpan!.status.code).toBe(SpanStatusCode.OK)
+    expect(errors).toHaveLength(0)
+
+    endSession(sessionID)
+  })
+
+  test('tool.start without callID is a no-op', async () => {
+    const hook = createEventHook(tracerProvider, loggerProvider, logError)
+    const sessionID = uniqueID()
+
+    await hook(makeEvent('session.created', sessionID))
+    await hook(makeEvent('tool.start', sessionID, { tool: 'bash' }))
+
+    const session = getSession(sessionID)
+    expect(session!.pendingTools.size).toBe(0)
+    expect(errors).toHaveLength(0)
+
+    endSession(sessionID)
+  })
+
+  test('tool.end without callID is a no-op', async () => {
+    const hook = createEventHook(tracerProvider, loggerProvider, logError)
+    const sessionID = uniqueID()
+
+    await hook(makeEvent('session.created', sessionID))
+    await hook(makeEvent('tool.end', sessionID))
+
+    expect(errors).toHaveLength(0)
+
+    endSession(sessionID)
+  })
+
+  test('tool.start span has correct attributes', async () => {
+    const hook = createEventHook(tracerProvider, loggerProvider, logError)
+    const sessionID = uniqueID()
+
+    await hook(makeEvent('session.created', sessionID))
+    await hook(makeEvent('tool.start', sessionID, { callID: 'call-abc', tool: 'write' }))
+    await hook(makeEvent('tool.end', sessionID, { callID: 'call-abc' }))
+
+    const spans = exporter.getFinishedSpans()
+    const toolSpan = spans.find((s) => s.name === 'tool.write')
+    expect(toolSpan).toBeDefined()
+    expect(toolSpan!.attributes['opencode.tool.name']).toBe('write')
+    expect(toolSpan!.attributes['opencode.tool.call.id']).toBe('call-abc')
+    expect(toolSpan!.attributes['opencode.session.id']).toBe(sessionID)
+
+    endSession(sessionID)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Source-aware: fallback message span discarded when primary exists
+// ---------------------------------------------------------------------------
+
+describe('source-aware message span in event hook', () => {
+  test('event hook fallback message span is discarded when primary exists', async () => {
+    const hook = createEventHook(tracerProvider, loggerProvider, logError)
+    const sessionID = uniqueID()
+
+    await hook(makeEvent('session.created', sessionID))
+
+    // Simulate chat-message hook creating a primary span first
+    const session = getSession(sessionID)!
+    const primarySpan = tracerProvider.getTracer('test').startSpan('chat.message', undefined, session.traceCtx)
+    setMessageSpan(sessionID, primarySpan, 'primary')
+
+    // Now event hook fires message.created — should NOT replace primary
+    await hook(makeEvent('message.created', sessionID))
+
+    expect(getSession(sessionID)!.messageSpan).toBe(primarySpan)
+    expect(errors).toHaveLength(0)
+
+    endSession(sessionID)
   })
 })
