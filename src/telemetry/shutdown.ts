@@ -46,7 +46,7 @@ export function registerShutdown(
       ])
 
       if (result === 'timeout') {
-        await logError('Shutdown timed out after 5s')
+        await logError(`Shutdown timed out after ${SHUTDOWN_TIMEOUT_MS}ms`)
       }
     } catch (err) {
       await logError(`Shutdown error: ${err instanceof Error ? err.message : String(err)}`)
