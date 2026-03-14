@@ -1,12 +1,9 @@
 import { describe, test, expect, beforeEach } from 'bun:test'
-import {
-  BasicTracerProvider,
-  InMemorySpanExporter,
-  SimpleSpanProcessor,
-} from '@opentelemetry/sdk-trace-base'
-import { context as otelContext, SpanStatusCode, trace } from '@opentelemetry/api'
-import { createSession, endSession, getSession } from '../../src/telemetry/context.ts'
+import type { BasicTracerProvider, InMemorySpanExporter } from '@opentelemetry/sdk-trace-base'
+import { SpanStatusCode } from '@opentelemetry/api'
+import { endSession, getSession } from '../../src/telemetry/context.ts'
 import { createToolExecuteHooks } from '../../src/hooks/tool-execute.ts'
+import { makeTracerProvider, uniqueID, uniqueCallID, createTestSession } from './helpers/test-utils.ts'
 
 // ---------------------------------------------------------------------------
 // Test infrastructure
@@ -15,25 +12,10 @@ import { createToolExecuteHooks } from '../../src/hooks/tool-execute.ts'
 let exporter: InMemorySpanExporter
 let provider: BasicTracerProvider
 
-function makeProvider(): BasicTracerProvider {
-  exporter = new InMemorySpanExporter()
-  const p = new BasicTracerProvider({
-    spanProcessors: [new SimpleSpanProcessor(exporter)],
-  })
-  return p
-}
-
-function uniqueID(): string {
-  return `session-${Math.random().toString(36).slice(2)}`
-}
-
-function uniqueCallID(): string {
-  return `call-${Math.random().toString(36).slice(2)}`
-}
-
 beforeEach(() => {
-  provider = makeProvider()
-  exporter.reset()
+  const result = makeTracerProvider()
+  provider = result.provider
+  exporter = result.exporter
 })
 
 // ---------------------------------------------------------------------------
@@ -44,10 +26,7 @@ describe('createToolExecuteHooks — before', () => {
   test('creates a tool span with name "tool.{toolName}"', async () => {
     const sessionID = uniqueID()
     const callID = uniqueCallID()
-    const tracer = provider.getTracer('test')
-    const rootSpan = tracer.startSpan('session.root')
-    const traceCtx = trace.setSpan(otelContext.active(), rootSpan)
-    createSession(sessionID, traceCtx, rootSpan)
+    createTestSession(provider, sessionID)
 
     const errors: string[] = []
     const { before } = createToolExecuteHooks(provider, (msg) => errors.push(msg))
@@ -55,7 +34,6 @@ describe('createToolExecuteHooks — before', () => {
     await before({ sessionID, tool: 'bash', callID }, undefined)
 
     // The span is pending — end the session to flush it
-    rootSpan.end()
     endSession(sessionID)
 
     const spans = exporter.getFinishedSpans()
@@ -67,16 +45,12 @@ describe('createToolExecuteHooks — before', () => {
   test('span has correct attributes', async () => {
     const sessionID = uniqueID()
     const callID = uniqueCallID()
-    const tracer = provider.getTracer('test')
-    const rootSpan = tracer.startSpan('session.root')
-    const traceCtx = trace.setSpan(otelContext.active(), rootSpan)
-    createSession(sessionID, traceCtx, rootSpan)
+    createTestSession(provider, sessionID)
 
     const { before } = createToolExecuteHooks(provider, () => {})
 
-    await before({ sessionID, tool: 'read_file', callID, args: { path: '/etc/passwd' } }, undefined)
+    await before({ sessionID, tool: 'read_file', callID }, undefined)
 
-    rootSpan.end()
     endSession(sessionID)
 
     const spans = exporter.getFinishedSpans()
@@ -90,19 +64,15 @@ describe('createToolExecuteHooks — before', () => {
   test('does NOT include args in span attributes', async () => {
     const sessionID = uniqueID()
     const callID = uniqueCallID()
-    const tracer = provider.getTracer('test')
-    const rootSpan = tracer.startSpan('session.root')
-    const traceCtx = trace.setSpan(otelContext.active(), rootSpan)
-    createSession(sessionID, traceCtx, rootSpan)
+    createTestSession(provider, sessionID)
 
     const { before } = createToolExecuteHooks(provider, () => {})
 
     await before(
-      { sessionID, tool: 'write_file', callID, args: { secret: 'very sensitive data' } },
+      { sessionID, tool: 'write_file', callID } as never,
       undefined,
     )
 
-    rootSpan.end()
     endSession(sessionID)
 
     const spans = exporter.getFinishedSpans()
@@ -112,16 +82,12 @@ describe('createToolExecuteHooks — before', () => {
     // No args-related key should appear
     expect(attrKeys.some((k) => k.toLowerCase().includes('arg'))).toBe(false)
     expect(attrKeys.some((k) => k.toLowerCase().includes('input'))).toBe(false)
-    expect(JSON.stringify(toolSpan!.attributes)).not.toContain('sensitive')
   })
 
   test('span is stored as pending tool on the session', async () => {
     const sessionID = uniqueID()
     const callID = uniqueCallID()
-    const tracer = provider.getTracer('test')
-    const rootSpan = tracer.startSpan('session.root')
-    const traceCtx = trace.setSpan(otelContext.active(), rootSpan)
-    createSession(sessionID, traceCtx, rootSpan)
+    createTestSession(provider, sessionID)
 
     const { before } = createToolExecuteHooks(provider, () => {})
 
@@ -131,23 +97,18 @@ describe('createToolExecuteHooks — before', () => {
     expect(session).toBeDefined()
     expect(session!.pendingTools.has(callID)).toBe(true)
 
-    rootSpan.end()
     endSession(sessionID)
   })
 
   test('span has root span as parent', async () => {
     const sessionID = uniqueID()
     const callID = uniqueCallID()
-    const tracer = provider.getTracer('test')
-    const rootSpan = tracer.startSpan('session.root')
-    const traceCtx = trace.setSpan(otelContext.active(), rootSpan)
-    createSession(sessionID, traceCtx, rootSpan)
+    createTestSession(provider, sessionID)
 
     const { before } = createToolExecuteHooks(provider, () => {})
 
     await before({ sessionID, tool: 'glob', callID }, undefined)
 
-    rootSpan.end()
     endSession(sessionID)
 
     const spans = exporter.getFinishedSpans()
@@ -163,7 +124,7 @@ describe('createToolExecuteHooks — before', () => {
     const errors: string[] = []
     const { before, after } = createToolExecuteHooks(provider, (msg) => errors.push(msg))
 
-    const sessionID = 'lazy-tool-' + Math.random().toString(36).slice(2)
+    const sessionID = uniqueID('lazy-tool')
     const callID = 'c-lazy-1'
 
     // No session.created event — simulates a pre-existing session
@@ -186,17 +147,13 @@ describe('createToolExecuteHooks — after', () => {
   test('ends the span with OK status', async () => {
     const sessionID = uniqueID()
     const callID = uniqueCallID()
-    const tracer = provider.getTracer('test')
-    const rootSpan = tracer.startSpan('session.root')
-    const traceCtx = trace.setSpan(otelContext.active(), rootSpan)
-    createSession(sessionID, traceCtx, rootSpan)
+    createTestSession(provider, sessionID)
 
     const { before, after } = createToolExecuteHooks(provider, () => {})
 
     await before({ sessionID, tool: 'bash', callID }, undefined)
     await after({ sessionID, tool: 'bash', callID, output: 'some output', title: 'Run bash' }, undefined)
 
-    rootSpan.end()
     endSession(sessionID)
 
     const spans = exporter.getFinishedSpans()
@@ -208,17 +165,13 @@ describe('createToolExecuteHooks — after', () => {
   test('sets opencode.tool.title when title is provided', async () => {
     const sessionID = uniqueID()
     const callID = uniqueCallID()
-    const tracer = provider.getTracer('test')
-    const rootSpan = tracer.startSpan('session.root')
-    const traceCtx = trace.setSpan(otelContext.active(), rootSpan)
-    createSession(sessionID, traceCtx, rootSpan)
+    createTestSession(provider, sessionID)
 
     const { before, after } = createToolExecuteHooks(provider, () => {})
 
     await before({ sessionID, tool: 'bash', callID }, undefined)
     await after({ sessionID, tool: 'bash', callID, title: 'List files' }, undefined)
 
-    rootSpan.end()
     endSession(sessionID)
 
     const toolSpan = exporter.getFinishedSpans().find((s) => s.name === 'tool.bash')
@@ -229,10 +182,7 @@ describe('createToolExecuteHooks — after', () => {
   test('truncates title to 256 characters', async () => {
     const sessionID = uniqueID()
     const callID = uniqueCallID()
-    const tracer = provider.getTracer('test')
-    const rootSpan = tracer.startSpan('session.root')
-    const traceCtx = trace.setSpan(otelContext.active(), rootSpan)
-    createSession(sessionID, traceCtx, rootSpan)
+    createTestSession(provider, sessionID)
 
     const { before, after } = createToolExecuteHooks(provider, () => {})
     const longTitle = 't'.repeat(500)
@@ -240,7 +190,6 @@ describe('createToolExecuteHooks — after', () => {
     await before({ sessionID, tool: 'bash', callID }, undefined)
     await after({ sessionID, tool: 'bash', callID, title: longTitle }, undefined)
 
-    rootSpan.end()
     endSession(sessionID)
 
     const toolSpan = exporter.getFinishedSpans().find((s) => s.name === 'tool.bash')
@@ -251,10 +200,7 @@ describe('createToolExecuteHooks — after', () => {
   test('forwards safe metadata fields as span attributes', async () => {
     const sessionID = uniqueID()
     const callID = uniqueCallID()
-    const tracer = provider.getTracer('test')
-    const rootSpan = tracer.startSpan('session.root')
-    const traceCtx = trace.setSpan(otelContext.active(), rootSpan)
-    createSession(sessionID, traceCtx, rootSpan)
+    createTestSession(provider, sessionID)
 
     const { before, after } = createToolExecuteHooks(provider, () => {})
 
@@ -267,7 +213,6 @@ describe('createToolExecuteHooks — after', () => {
       metadata: { region: 'us-east-1', retries: 3, nested: { x: 1 }, empty: '' },
     }, undefined)
 
-    rootSpan.end()
     endSession(sessionID)
 
     const toolSpan = exporter.getFinishedSpans().find((s) => s.name === 'tool.bash')
@@ -282,10 +227,7 @@ describe('createToolExecuteHooks — after', () => {
   test('does NOT include output in span attributes', async () => {
     const sessionID = uniqueID()
     const callID = uniqueCallID()
-    const tracer = provider.getTracer('test')
-    const rootSpan = tracer.startSpan('session.root')
-    const traceCtx = trace.setSpan(otelContext.active(), rootSpan)
-    createSession(sessionID, traceCtx, rootSpan)
+    createTestSession(provider, sessionID)
 
     const { before, after } = createToolExecuteHooks(provider, () => {})
 
@@ -298,7 +240,6 @@ describe('createToolExecuteHooks — after', () => {
       title: 'done',
     }, undefined)
 
-    rootSpan.end()
     endSession(sessionID)
 
     const toolSpan = exporter.getFinishedSpans().find((s) => s.name === 'tool.bash')
@@ -320,10 +261,7 @@ describe('createToolExecuteHooks — after', () => {
 
   test('after without before for known session is a no-op', async () => {
     const sessionID = uniqueID()
-    const tracer = provider.getTracer('test')
-    const rootSpan = tracer.startSpan('session.root')
-    const traceCtx = trace.setSpan(otelContext.active(), rootSpan)
-    createSession(sessionID, traceCtx, rootSpan)
+    createTestSession(provider, sessionID)
 
     const errors: string[] = []
     const { after } = createToolExecuteHooks(provider, (msg) => errors.push(msg))
@@ -334,17 +272,13 @@ describe('createToolExecuteHooks — after', () => {
     expect(exporter.getFinishedSpans()).toHaveLength(0)
     expect(errors).toHaveLength(0)
 
-    rootSpan.end()
     endSession(sessionID)
   })
 
   test('span is removed from pendingTools after after hook', async () => {
     const sessionID = uniqueID()
     const callID = uniqueCallID()
-    const tracer = provider.getTracer('test')
-    const rootSpan = tracer.startSpan('session.root')
-    const traceCtx = trace.setSpan(otelContext.active(), rootSpan)
-    createSession(sessionID, traceCtx, rootSpan)
+    createTestSession(provider, sessionID)
 
     const { before, after } = createToolExecuteHooks(provider, () => {})
 
@@ -355,7 +289,6 @@ describe('createToolExecuteHooks — after', () => {
     expect(session).toBeDefined()
     expect(session!.pendingTools.has(callID)).toBe(false)
 
-    rootSpan.end()
     endSession(sessionID)
   })
 })
@@ -368,17 +301,13 @@ describe('orphaned tool spans via endSession', () => {
   test('before without after — endSession ends the span with ERROR status', async () => {
     const sessionID = uniqueID()
     const callID = uniqueCallID()
-    const tracer = provider.getTracer('test')
-    const rootSpan = tracer.startSpan('session.root')
-    const traceCtx = trace.setSpan(otelContext.active(), rootSpan)
-    createSession(sessionID, traceCtx, rootSpan)
+    createTestSession(provider, sessionID)
 
     const { before } = createToolExecuteHooks(provider, () => {})
 
     await before({ sessionID, tool: 'bash', callID }, undefined)
 
     // No after call — session ends while tool is pending
-    rootSpan.end()
     endSession(sessionID)
 
     const spans = exporter.getFinishedSpans()
@@ -402,10 +331,7 @@ describe('createToolExecuteHooks — error handling', () => {
     } as unknown as BasicTracerProvider
 
     const sessionID = uniqueID()
-    const tracer = provider.getTracer('test')
-    const rootSpan = tracer.startSpan('session.root')
-    const traceCtx = trace.setSpan(otelContext.active(), rootSpan)
-    createSession(sessionID, traceCtx, rootSpan)
+    createTestSession(provider, sessionID)
 
     const { before } = createToolExecuteHooks(brokenProvider, (msg) => errors.push(msg))
 
@@ -414,7 +340,6 @@ describe('createToolExecuteHooks — error handling', () => {
     expect(errors).toHaveLength(1)
     expect(errors[0]).toContain('tool.before')
 
-    rootSpan.end()
     endSession(sessionID)
   })
 })

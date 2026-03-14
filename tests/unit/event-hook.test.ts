@@ -1,13 +1,10 @@
 import { describe, test, expect, beforeEach } from 'bun:test'
-import {
-  BasicTracerProvider,
-  InMemorySpanExporter,
-  SimpleSpanProcessor,
-} from '@opentelemetry/sdk-trace-base'
-import { LoggerProvider } from '@opentelemetry/sdk-logs'
+import type { BasicTracerProvider, InMemorySpanExporter } from '@opentelemetry/sdk-trace-base'
+import type { LoggerProvider } from '@opentelemetry/sdk-logs'
 import { SpanStatusCode } from '@opentelemetry/api'
 import { createEventHook } from '../../src/hooks/event.ts'
-import { endSession, getSession, setMessageSpan, addToolSpan } from '../../src/telemetry/context.ts'
+import { endSession, getSession, setMessageSpan } from '../../src/telemetry/context.ts'
+import { makeAllProviders, uniqueID } from './helpers/test-utils.ts'
 
 // ---------------------------------------------------------------------------
 // Test infrastructure
@@ -18,21 +15,8 @@ let tracerProvider: BasicTracerProvider
 let loggerProvider: LoggerProvider
 let errors: string[]
 
-function makeProviders(): void {
-  exporter = new InMemorySpanExporter()
-  tracerProvider = new BasicTracerProvider({
-    spanProcessors: [new SimpleSpanProcessor(exporter)],
-  })
-  loggerProvider = new LoggerProvider()
-  errors = []
-}
-
 function logError(msg: string): void {
   errors.push(msg)
-}
-
-function uniqueID(): string {
-  return `session-${Math.random().toString(36).slice(2)}`
 }
 
 function makeEvent(
@@ -50,7 +34,11 @@ function makeEvent(
 }
 
 beforeEach(() => {
-  makeProviders()
+  const result = makeAllProviders()
+  tracerProvider = result.tracerProvider
+  loggerProvider = result.loggerProvider
+  exporter = result.exporter
+  errors = []
 })
 
 // ---------------------------------------------------------------------------

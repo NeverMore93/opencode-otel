@@ -26,11 +26,15 @@ import { type BasicTracerProvider } from '@opentelemetry/sdk-trace-base'
 import { type LoggerProvider } from '@opentelemetry/sdk-logs'
 import { SpanStatusCode } from '@opentelemetry/api'
 import { SeverityNumber } from '@opentelemetry/api-logs'
-import { addToolSpan, endSession, getOrCreateSession, getSession, removeToolSpan, setMessageSpan } from '../telemetry/context.ts'
-import { truncateAttributes, truncateString } from '../telemetry/attributes.ts'
+import { addToolSpan, endMessageSpan, endSession, getOrCreateSession, getSession, removeToolSpan, setMessageSpan } from '../telemetry/context.ts'
+import { truncateAttributes, extractSafeAttributes } from '../telemetry/attributes.ts'
+import { TRACER_NAME, TRACER_VERSION, LOGGER_NAME } from '../telemetry/constants.ts'
 import { getSeverity, isAllowedEvent } from './severity.ts'
 
-const LOGGER_NAME = 'opencode-otel'
+const DEBUG = process.env['OTEL_PLUGIN_DEBUG'] === '1'
+
+const EVENT_SKIP_KEYS: ReadonlySet<string> = new Set(['sessionID', 'info'])
+const SESSION_SKIP_KEYS: ReadonlySet<string> = new Set(['id'])
 
 /**
  * OpenCode Event type — discriminated union with { type, properties }.
@@ -79,25 +83,6 @@ function extractSessionID(eventType: string, properties: Record<string, unknown>
 }
 
 /**
- * Extract safe (string/number) attributes from event properties for forwarding.
- * Skips sessionID (already handled) and info (handled separately for session.created).
- */
-function safeEventAttributes(
-  properties: Record<string, unknown>,
-): Record<string, string | number> {
-  const result: Record<string, string | number> = {}
-  for (const [key, value] of Object.entries(properties)) {
-    if (key === 'sessionID' || key === 'info') continue
-    if (typeof value === 'string' && value !== '') {
-      result[`opencode.event.${key}`] = truncateString(value)
-    } else if (typeof value === 'number') {
-      result[`opencode.event.${key}`] = value
-    }
-  }
-  return result
-}
-
-/**
  * Forward session.created info properties to the root span as attributes.
  * Extracts all safe string/number fields from properties.info.
  */
@@ -111,14 +96,8 @@ function forwardSessionAttributes(
   const info = properties['info']
   if (typeof info !== 'object' || info === null) return
 
-  for (const [key, value] of Object.entries(info as Record<string, unknown>)) {
-    if (key === 'id') continue // already set as opencode.session.id
-    if (typeof value === 'string' && value !== '') {
-      session.rootSpan.setAttribute(`opencode.session.${key}`, truncateString(value))
-    } else if (typeof value === 'number') {
-      session.rootSpan.setAttribute(`opencode.session.${key}`, value)
-    }
-  }
+  const attrs = extractSafeAttributes(info as Record<string, unknown>, 'opencode.session.', SESSION_SKIP_KEYS)
+  session.rootSpan.setAttributes(attrs)
 }
 
 /**
@@ -131,7 +110,7 @@ function emitLogRecord(
   properties: Record<string, unknown>,
 ): void {
   const severity = getSeverity(eventType)
-  const eventAttrs = safeEventAttributes(properties)
+  const eventAttrs = extractSafeAttributes(properties, 'opencode.event.', EVENT_SKIP_KEYS)
   const attrs = truncateAttributes({
     'opencode.event.type': eventType,
     ...(sessionID !== '' ? { 'opencode.session.id': sessionID } : {}),
@@ -185,7 +164,7 @@ function handleMessageCreated(
   const session = getSession(sessionID)
   if (session === undefined) return
 
-  const tracer = tracerProvider.getTracer(LOGGER_NAME)
+  const tracer = tracerProvider.getTracer(TRACER_NAME, TRACER_VERSION)
   const messageSpan = tracer.startSpan('message', undefined, session.traceCtx)
   setMessageSpan(sessionID, messageSpan, 'fallback')
 }
@@ -208,7 +187,7 @@ function handleToolStart(
 
   const toolName = (typeof properties['tool'] === 'string' && properties['tool'] !== '') ? properties['tool'] : 'unknown'
 
-  const tracer = tracerProvider.getTracer(LOGGER_NAME)
+  const tracer = tracerProvider.getTracer(TRACER_NAME, TRACER_VERSION)
   const attributes = truncateAttributes({
     'opencode.session.id': sessionID,
     'opencode.tool.name': toolName,
@@ -242,13 +221,7 @@ function handleToolEnd(
  *   - End the active message span.
  */
 function handleMessageCompleted(sessionID: string): void {
-  const session = getSession(sessionID)
-  if (session === undefined) return
-
-  if (session.messageSpan !== undefined) {
-    session.messageSpan.end()
-    session.messageSpan = undefined
-  }
+  endMessageSpan(sessionID)
 }
 
 /**
@@ -273,7 +246,7 @@ export function createEventHook(
       const sessionID = extractSessionID(input.type, properties)
 
       // --- Debug logging for runtime visibility ---
-      console.error(`[opencode-otel] event: ${input.type} session=${sessionID || 'none'}`)
+      if (DEBUG) console.error(`[opencode-otel] event: ${input.type} session=${sessionID || 'none'}`)
 
       // --- Lazy root span creation ---
       // Ensures a root span exists for any event carrying a sessionID.

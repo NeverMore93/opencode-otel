@@ -9,6 +9,7 @@
 import { type Context, type Span, SpanStatusCode, context as otelContext, trace } from '@opentelemetry/api'
 import type { BasicTracerProvider } from '@opentelemetry/sdk-trace-base'
 import { truncateString } from './attributes.ts'
+import { TRACER_NAME, TRACER_VERSION } from './constants.ts'
 
 export type SessionContext = {
   readonly traceCtx: Context
@@ -61,7 +62,7 @@ export function getOrCreateSession(
   const existing = sessions.get(sessionID)
   if (existing !== undefined) return existing
 
-  const tracer = tracerProvider.getTracer('opencode-otel')
+  const tracer = tracerProvider.getTracer(TRACER_NAME, TRACER_VERSION)
   const rootSpan = tracer.startSpan('session', undefined, otelContext.active())
   rootSpan.setAttribute('opencode.session.id', truncateString(sessionID))
 
@@ -139,6 +140,19 @@ export function removeToolSpan(
   const span = session.pendingTools.get(callID)
   session.pendingTools.delete(callID)
   return span
+}
+
+/**
+ * End and clear the active message span for a session.
+ * No-op if the session doesn't exist or has no active message span.
+ */
+export function endMessageSpan(sessionID: string): void {
+  const session = sessions.get(sessionID)
+  if (session === undefined) return
+  if (session.messageSpan !== undefined) {
+    session.messageSpan.end()
+    session.messageSpan = undefined
+  }
 }
 
 /**

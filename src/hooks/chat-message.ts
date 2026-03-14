@@ -15,10 +15,8 @@
 
 import type { BasicTracerProvider } from '@opentelemetry/sdk-trace-base'
 import { getOrCreateSession, setMessageSpan } from '../telemetry/context.ts'
-import { truncateAttributes, truncateString } from '../telemetry/attributes.ts'
-
-const TRACER_NAME = 'opencode-otel'
-const TRACER_VERSION = '0.1.0'
+import { truncateAttributes } from '../telemetry/attributes.ts'
+import { TRACER_NAME, TRACER_VERSION } from '../telemetry/constants.ts'
 
 export interface ChatMessageInput {
   readonly sessionID: string

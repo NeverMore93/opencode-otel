@@ -8,10 +8,9 @@
 
 import type { BasicTracerProvider } from '@opentelemetry/sdk-trace-base'
 import type { LoggerProvider } from '@opentelemetry/sdk-logs'
+import { SHUTDOWN_TIMEOUT_MS } from './constants.ts'
 
-const SHUTDOWN_TIMEOUT_MS = 5_000
-
-type LogFn = (message: string) => void
+type LogFn = (message: string) => void | Promise<void>
 
 /**
  * Register process exit handlers that flush both providers.
@@ -47,10 +46,10 @@ export function registerShutdown(
       ])
 
       if (result === 'timeout') {
-        logError('Shutdown timed out after 5s')
+        await logError('Shutdown timed out after 5s')
       }
     } catch (err) {
-      logError(`Shutdown error: ${err instanceof Error ? err.message : String(err)}`)
+      await logError(`Shutdown error: ${err instanceof Error ? err.message : String(err)}`)
     } finally {
       clearTimeout(timeoutId)
     }

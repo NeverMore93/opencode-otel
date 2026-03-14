@@ -48,7 +48,11 @@ export default async function plugin(ctx: PluginContext) {
   const logInfo = log('info')
 
   try {
-    const config = await loadConfig()
+    const { config, warnings } = await loadConfig()
+
+    for (const warning of warnings) {
+      await logError(warning)
+    }
 
     if (!config.tracesEndpoint && !config.logsEndpoint && !config.langfuse) {
       await logInfo('No OTEL endpoints configured — plugin inactive')
@@ -67,9 +71,10 @@ export default async function plugin(ctx: PluginContext) {
 
     registerShutdown(tracerProvider, loggerProvider, logError)
 
-    const eventHook = createEventHook(tracerProvider, loggerProvider, logError)
-    const chatMessageHook = createChatMessageHook(tracerProvider, logError)
-    const toolHooks = createToolExecuteHooks(tracerProvider, logError)
+    const hookLog = (msg: string): void => { void logError(msg) }
+    const eventHook = createEventHook(tracerProvider, loggerProvider, hookLog)
+    const chatMessageHook = createChatMessageHook(tracerProvider, hookLog)
+    const toolHooks = createToolExecuteHooks(tracerProvider, hookLog)
 
     const backendNames = backends.map((b: BackendEntry) => b.name).join(', ')
     await logInfo(
