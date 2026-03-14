@@ -69,8 +69,8 @@ describe('createToolExecuteHooks — before', () => {
     const { before } = createToolExecuteHooks(provider, () => {})
 
     await before(
-      { sessionID, tool: 'write_file', callID } as never,
-      undefined,
+      { sessionID, tool: 'write_file', callID },
+      { args: { secret: 'very sensitive data' } },
     )
 
     endSession(sessionID)
@@ -82,6 +82,8 @@ describe('createToolExecuteHooks — before', () => {
     // No args-related key should appear
     expect(attrKeys.some((k) => k.toLowerCase().includes('arg'))).toBe(false)
     expect(attrKeys.some((k) => k.toLowerCase().includes('input'))).toBe(false)
+    // Sensitive data must not leak into attributes
+    expect(JSON.stringify(toolSpan!.attributes)).not.toContain('sensitive')
   })
 
   test('span is stored as pending tool on the session', async () => {
