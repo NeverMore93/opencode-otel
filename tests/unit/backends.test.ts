@@ -1,5 +1,5 @@
 import { describe, test, expect, beforeEach, afterEach } from 'bun:test'
-import { createProcessors, type ProcessorSet } from '../../src/telemetry/backends.ts'
+import { createProcessors } from '../../src/telemetry/backends.ts'
 import type { OtelConfig } from '../../src/config.ts'
 
 // ---------------------------------------------------------------------------

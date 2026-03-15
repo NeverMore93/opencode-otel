@@ -1,6 +1,5 @@
 import type { Attributes, AttributeValue } from '@opentelemetry/api'
-
-const DEFAULT_MAX_LEN = 256
+import { DEFAULT_MAX_LEN } from './constants.ts'
 
 /**
  * Truncates a single string to at most `maxLen` characters.
@@ -23,4 +22,28 @@ export function truncateAttributes(
       typeof value === 'string' ? truncateString(value, maxLen) : value,
     ]),
   )
+}
+
+/**
+ * Extract safe (string/number/boolean) attributes from an arbitrary record,
+ * prefixing each key and optionally skipping specified keys.
+ *
+ * Empty strings and non-primitive values are silently dropped.
+ * String values are truncated to DEFAULT_MAX_LEN.
+ */
+export function extractSafeAttributes(
+  source: Record<string, unknown>,
+  prefix: string,
+  skipKeys: ReadonlySet<string> = new Set(),
+): Record<string, string | number | boolean> {
+  const result: Record<string, string | number | boolean> = {}
+  for (const [key, value] of Object.entries(source)) {
+    if (skipKeys.has(key)) continue
+    if (typeof value === 'string' && value !== '') {
+      result[`${prefix}${key}`] = truncateString(value)
+    } else if (typeof value === 'number' || typeof value === 'boolean') {
+      result[`${prefix}${key}`] = value
+    }
+  }
+  return result
 }

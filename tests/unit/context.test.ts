@@ -1,10 +1,6 @@
 import { describe, test, expect, beforeEach } from 'bun:test'
-import {
-  BasicTracerProvider,
-  InMemorySpanExporter,
-  SimpleSpanProcessor,
-} from '@opentelemetry/sdk-trace-base'
-import { context as otelContext, SpanStatusCode, trace } from '@opentelemetry/api'
+import type { BasicTracerProvider, InMemorySpanExporter } from '@opentelemetry/sdk-trace-base'
+import { context as otelContext, SpanStatusCode } from '@opentelemetry/api'
 import {
   createSession,
   getSession,
@@ -13,6 +9,7 @@ import {
   removeToolSpan,
   endSession,
 } from '../../src/telemetry/context'
+import { makeTracerProvider, uniqueID } from './helpers/test-utils'
 
 // ---------------------------------------------------------------------------
 // Test infrastructure
@@ -21,26 +18,11 @@ import {
 let exporter: InMemorySpanExporter
 let tracer: ReturnType<BasicTracerProvider['getTracer']>
 
-function makeProvider(): BasicTracerProvider {
-  exporter = new InMemorySpanExporter()
-  const provider = new BasicTracerProvider({
-    spanProcessors: [new SimpleSpanProcessor(exporter)],
-  })
-  return provider
-}
-
 beforeEach(() => {
-  const provider = makeProvider()
-  tracer = provider.getTracer('test')
-
-  // Clean up any sessions that might have been left by a previous test by
-  // ending sessions explicitly — we use unique IDs per test so this is just
-  // belt-and-suspenders.
+  const result = makeTracerProvider()
+  exporter = result.exporter
+  tracer = result.provider.getTracer('test')
 })
-
-function uniqueID(): string {
-  return `session-${Math.random().toString(36).slice(2)}`
-}
 
 // ---------------------------------------------------------------------------
 // createSession / getSession

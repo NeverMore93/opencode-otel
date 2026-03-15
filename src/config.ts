@@ -34,6 +34,12 @@ export interface OtelConfig {
   readonly langfuse: LangfuseConfig | undefined
 }
 
+/** Return type of loadConfig(). Includes any warnings collected during loading. */
+export interface ConfigResult {
+  readonly config: OtelConfig
+  readonly warnings: readonly string[]
+}
+
 /**
  * Shape of the optional .opencode/plugins/otel.json file.
  * All fields are optional; env vars always win over file values.
@@ -118,9 +124,9 @@ function resolveEnvPlaceholders(obj: unknown): unknown {
  * Attempt to read and parse the optional config file.
  * Returns `null` if the file does not exist or cannot be parsed.
  * ${VAR} placeholders are resolved against process.env.
- * Never throws.
+ * Never throws. Warnings are appended to the provided array.
  */
-async function readConfigFile(): Promise<ConfigFileShape | null> {
+async function readConfigFile(warnings: string[]): Promise<ConfigFileShape | null> {
   try {
     const file = Bun.file(CONFIG_FILE_PATH)
     if (await file.exists()) {
@@ -128,13 +134,13 @@ async function readConfigFile(): Promise<ConfigFileShape | null> {
       if (typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed)) {
         return resolveEnvPlaceholders(parsed) as ConfigFileShape
       }
-      console.warn(
-        `[opencode-otel] Invalid config file at ${CONFIG_FILE_PATH}: content is not a JSON object`,
+      warnings.push(
+        `Invalid config file at ${CONFIG_FILE_PATH}: content is not a JSON object`,
       )
     }
   } catch (err) {
-    console.warn(
-      `[opencode-otel] Failed to read config file ${CONFIG_FILE_PATH}: ${err instanceof Error ? err.message : String(err)}`,
+    warnings.push(
+      `Failed to read config file ${CONFIG_FILE_PATH}: ${err instanceof Error ? err.message : String(err)}`,
     )
   }
   return null
@@ -177,10 +183,13 @@ function fileHeaders(raw: unknown): OtelHeaders {
  * Precedence (highest → lowest):
  *   env vars → config file → defaults
  *
- * The returned object is deeply frozen (immutable).
+ * The returned config object is deeply frozen (immutable).
+ * Any non-fatal warnings (e.g. partial Langfuse config) are collected and
+ * returned alongside the config so callers can log them via the plugin logger.
  */
-export async function loadConfig(): Promise<OtelConfig> {
-  const fileConfig = await readConfigFile()
+export async function loadConfig(): Promise<ConfigResult> {
+  const warnings: string[] = []
+  const fileConfig = await readConfigFile(warnings)
 
   // Env vars take precedence over file values.
   const tracesEndpoint =
@@ -220,8 +229,8 @@ export async function loadConfig(): Promise<OtelConfig> {
     langfuseCreds.some(Boolean) && !langfuseCreds.every(Boolean)
 
   if (hasPartialLangfuse) {
-    console.warn(
-      '[opencode-otel] Partial Langfuse config detected — need LANGFUSE_PUBLIC_KEY, LANGFUSE_SECRET_KEY, and LANGFUSE_BASE_URL. Skipping Langfuse backend.',
+    warnings.push(
+      'Partial Langfuse config detected — need LANGFUSE_PUBLIC_KEY, LANGFUSE_SECRET_KEY, and LANGFUSE_BASE_URL. Skipping Langfuse backend.',
     )
   }
 
@@ -230,11 +239,14 @@ export async function loadConfig(): Promise<OtelConfig> {
       ? Object.freeze({ publicKey: langfusePublicKey, secretKey: langfuseSecretKey, baseUrl: langfuseBaseUrl })
       : undefined
 
-  return Object.freeze({
-    tracesEndpoint,
-    logsEndpoint,
-    serviceName,
-    headers,
-    langfuse,
-  } satisfies OtelConfig)
+  return {
+    config: Object.freeze({
+      tracesEndpoint,
+      logsEndpoint,
+      serviceName,
+      headers,
+      langfuse,
+    } satisfies OtelConfig),
+    warnings,
+  }
 }

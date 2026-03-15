@@ -18,11 +18,8 @@
 import { SpanStatusCode } from '@opentelemetry/api'
 import type { BasicTracerProvider } from '@opentelemetry/sdk-trace-base'
 import { getOrCreateSession, addToolSpan, removeToolSpan } from '../telemetry/context.ts'
-import { truncateString, truncateAttributes } from '../telemetry/attributes.ts'
-
-const TRACER_NAME = 'opencode-otel'
-const TRACER_VERSION = '0.1.0'
-const TITLE_MAX_LEN = 256
+import { truncateString, truncateAttributes, extractSafeAttributes } from '../telemetry/attributes.ts'
+import { TRACER_NAME, TRACER_VERSION, DEFAULT_MAX_LEN } from '../telemetry/constants.ts'
 
 export interface ToolBeforeInput {
   readonly sessionID: string
@@ -84,17 +81,12 @@ export function createToolExecuteHooks(
       if (span === undefined) return
 
       if (input.title !== undefined) {
-        span.setAttribute('opencode.tool.title', truncateString(input.title, TITLE_MAX_LEN))
+        span.setAttribute('opencode.tool.title', truncateString(input.title, DEFAULT_MAX_LEN))
       }
 
       if (input.metadata !== undefined && typeof input.metadata === 'object' && input.metadata !== null) {
-        for (const [key, value] of Object.entries(input.metadata as Record<string, unknown>)) {
-          if (typeof value === 'string' && value !== '') {
-            span.setAttribute(`opencode.tool.metadata.${key}`, truncateString(value))
-          } else if (typeof value === 'number') {
-            span.setAttribute(`opencode.tool.metadata.${key}`, value)
-          }
-        }
+        const metadataAttrs = extractSafeAttributes(input.metadata as Record<string, unknown>, 'opencode.tool.metadata.')
+        span.setAttributes(metadataAttrs)
       }
 
       span.setStatus({ code: SpanStatusCode.OK })
