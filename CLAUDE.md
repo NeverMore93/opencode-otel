@@ -2,65 +2,47 @@
 
 ## What This Project Is
 
-**opencode-otel** — an OpenCode npm plugin that provides unified observability by exporting session traces and logs to any OTLP-compatible backend (Jaeger, Grafana Tempo, LangSmith, Langfuse via OTLP, etc.) via OpenTelemetry.
+**opencode-otel** — an OpenCode npm plugin that forwards runtime stderr logs to any OTLP-compatible log collector via gRPC or HTTP. Business events (traces/spans) are handled by opencode-plugin-langfuse.
 
 ## Technical Context
 
 - **Language**: TypeScript 5.5+ / Bun runtime
 - **Project Type**: npm library (OpenCode plugin)
-- **Dependencies**: `@opentelemetry/api@1.9.x`, `@opentelemetry/sdk-trace-base@2.5.x`, `@opentelemetry/sdk-logs@0.212.x`, `@opentelemetry/exporter-trace-otlp-http`, `@opentelemetry/exporter-logs-otlp-http`, `@opentelemetry/resources@2.5.x`
+- **Dependencies**: `@opentelemetry/api`, `@opentelemetry/sdk-trace-base`, `@opentelemetry/exporter-trace-otlp-grpc`, `@opentelemetry/api-logs`, `@opentelemetry/sdk-logs`, `@opentelemetry/exporter-logs-otlp-grpc`, `@opentelemetry/exporter-logs-otlp-http`, `@opentelemetry/resources`, `@grpc/grpc-js` (transitive)
 - **Plugin SDK**: `@opencode-ai/plugin@>=1.1.0` (peer dependency)
 - **Build**: tsup (ESM output, external `@opencode-ai/*`)
-- **Testing**: `bun test` with `InMemorySpanExporter`
+- **Testing**: `bun test`
 
 ## Key Constraints
 
-- **Cannot modify OpenCode source code** — integration must be via npm plugin mechanism only
-- **Bun AsyncLocalStorage is broken** — use explicit `Map<sessionID, Context>` for span context propagation, never `context.with()`
-- **OTEL JS Logs SDK is experimental** (0.212.x) — may have breaking changes
-- **OTLP HTTP only** — no gRPC (Bun doesn't support `@grpc/grpc-js` native modules)
-- **Data sensitivity** — never include message text, file contents, tool output, or credentials in spans/logs
-
-## Attribute Forwarding
-
-Properties from OpenCode are automatically forwarded to spans at four levels:
-
-1. **Resource attributes** (all spans): `opencode.directory`, `opencode.project` — from plugin context
-2. **Root span attributes** (per session): `opencode.session.*` — from `session.created` event's `properties.info` (all safe string/number fields)
-3. **Span attributes** (per hook): `opencode.message.id`, `opencode.message.variant`, `opencode.tool.metadata.*` — from dedicated hook inputs
-4. **LogRecord attributes** (per event): `opencode.event.*` — safe string/number fields from event properties
-
-No additional configuration needed — custom metadata passed via OpenCode API session creation appears automatically in exported traces.
+- **Cannot modify OpenCode source code** — integration via npm plugin mechanism only
+- **Monkey-patch `process.stderr.write`** — runtime interception of log output (JS dynamic proxy pattern)
+- **gRPC primary, HTTP fallback** — company TripLog collector only accepts gRPC on :8080
+- **Uses `event` hook for session lifecycle tracking** (`session.created`/`idle`/`deleted`) — creates root spans per session so all logs share the same traceId
+- **No business traces/spans** — business events handled by opencode-plugin-langfuse
 
 ## Architecture
 
 ```text
 Plugin Entry (src/index.ts)
-  ├─ Config (src/config.ts) ← env vars + ~/.config/opencode/plugins/otel.json
-  ├─ Telemetry
-  │   ├─ provider.ts   ← TracerProvider + LoggerProvider setup (+ pluginContext → Resource)
-  │   ├─ backends.ts   ← Backend processor factories (OTLP HTTP export)
-  │   ├─ context.ts    ← Session context map (Bun workaround)
-  │   └─ shutdown.ts   ← Graceful shutdown
-  └─ Hooks (source-aware: dedicated hooks = 'primary', event hook = 'fallback')
-      ├─ event.ts         ← event hook → OTEL log records + session root spans + fallback message/tool spans + attribute forwarding
-      ├─ chat-message.ts  ← chat.message → primary message child spans (+ messageID/variant)
-      └─ tool-execute.ts  ← tool.execute.before/after → primary tool child spans (+ metadata forwarding)
+  ├─ Config (src/config.ts) ← env vars + optional config file
+  ├─ Log Provider (src/provider.ts) ← LoggerProvider + BatchLogRecordProcessor + gRPC/HTTP exporter
+  ├─ Interceptor (src/interceptor.ts) ← monkey-patch process.stderr.write, line buffering, severity parsing
+  └─ Shutdown (src/shutdown.ts) ← graceful flush on process exit
 ```
 
-## Backend Configuration
+## Configuration
 
-| Backend | Env Vars | Auth |
-|---------|----------|------|
-| Generic OTEL | `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT`, `OTEL_EXPORTER_OTLP_LOGS_ENDPOINT` | `OTEL_EXPORTER_OTLP_HEADERS` |
+| Env Variable | Default | Description |
+|-------------|---------|-------------|
+| `OTEL_EXPORTER_OTLP_LOGS_ENDPOINT` | — | Log collector endpoint (required) |
+| `OTEL_EXPORTER_OTLP_LOGS_PROTOCOL` | `grpc` | Protocol: `grpc` or `http/json` |
+| `OTEL_SERVICE_NAME` | `opencode-agent` | service.name resource attribute |
+| `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` | — | Traces endpoint (optional, for session span export) |
+| `OTEL_RESOURCE_ATTRIBUTES` | — | Additional resource attributes (auto-parsed by SDK) |
 
 ## Design Documents
 
 All specs are in `specs/` directory:
 - `constitution.md` — project constitution and principles
-- `spec.md` — feature specification
-- `plan.md` — implementation plan
-- `tasks.md` — task list (needs regeneration)
-- `research.md` — technology decisions
-- `data-model.md` — entity definitions
-- `contracts/` — plugin hooks and OTEL export contracts
+- Feature specs in `specs/010-stderr-log-forwarder/`

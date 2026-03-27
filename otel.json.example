@@ -1,8 +1,6 @@
 {
-  "tracesEndpoint": "http://localhost:4318/v1/traces",
-  "logsEndpoint": "http://localhost:4318/v1/logs",
+  "logsEndpoint": "http://your-otel-collector:8080",
+  "logsProtocol": "grpc",
   "serviceName": "opencode-agent",
-  "headers": {
-    "Authorization": "Bearer ${YOUR_API_TOKEN}"
-  }
+  "maxLineLength": 4096
 }

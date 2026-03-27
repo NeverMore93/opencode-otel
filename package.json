@@ -1,7 +1,7 @@
 {
   "name": "opencode-otel",
-  "version": "0.5.0",
-  "description": "OpenCode plugin for unified observability via OpenTelemetry — export session traces and logs to any OTLP-compatible backend (Jaeger, Grafana Tempo, LangSmith, etc.)",
+  "version": "1.0.0",
+  "description": "OpenCode plugin — forwards runtime stderr logs to any OTLP-compatible log collector via gRPC or HTTP",
   "type": "module",
   "main": "dist/index.js",
   "module": "dist/index.js",
@@ -26,10 +26,9 @@
     "opencode",
     "opentelemetry",
     "otel",
-    "observability",
-    "langsmith",
-    "jaeger",
-    "tracing",
+    "logs",
+    "stderr",
+    "grpc",
     "plugin"
   ],
   "author": "NeverMore93",
@@ -40,6 +39,7 @@
   },
   "devDependencies": {
     "@types/bun": "^1.2.0",
+    "esbuild": "^0.27.3",
     "tsup": "^8.5.1",
     "typescript": "^5.5.0"
   },
@@ -49,8 +49,9 @@
   "dependencies": {
     "@opentelemetry/api": "^1.9.0",
     "@opentelemetry/api-logs": "^0.212.0",
+    "@opentelemetry/exporter-logs-otlp-grpc": "^0.214.0",
     "@opentelemetry/exporter-logs-otlp-http": "^0.212.0",
-    "@opentelemetry/exporter-trace-otlp-http": "^0.212.0",
+    "@opentelemetry/exporter-trace-otlp-grpc": "^0.214.0",
     "@opentelemetry/resources": "^2.5.1",
     "@opentelemetry/sdk-logs": "^0.212.0",
     "@opentelemetry/sdk-trace-base": "^2.5.1"

@@ -1,17 +1,19 @@
 /**
- * opencode-otel — OpenCode plugin for unified observability via OpenTelemetry.
+ * opencode-otel — OpenCode plugin that forwards runtime stderr logs
+ * to an OTLP-compatible log collector via gRPC or HTTP.
  *
- * Exports session traces and logs to any OTLP-compatible backend
- * (Jaeger, Grafana Tempo, LangSmith, Langfuse via OTLP, etc.).
+ * Mechanism:
+ * 1. Monkey-patches process.stderr.write to intercept log output
+ * 2. Uses event hook for session lifecycle (session.created / session.idle / session.deleted)
+ *    to create trace context — so all logs in a session share the same traceId
+ * 3. Business-level traces/spans are handled by opencode-plugin-langfuse
  */
 
 import { loadConfig } from './config.ts'
-import { initProviders } from './telemetry/provider.ts'
-import type { BackendEntry } from './telemetry/backends.ts'
-import { registerShutdown } from './telemetry/shutdown.ts'
-import { createEventHook } from './hooks/event.ts'
-import { createChatMessageHook } from './hooks/chat-message.ts'
-import { createToolExecuteHooks } from './hooks/tool-execute.ts'
+import { install, type ParsedLine } from './interceptor.ts'
+import { initProviders } from './provider.ts'
+import { registerShutdown } from './shutdown.ts'
+import { startSession, endSession, setActiveSession, getActiveTraceContext } from './session.ts'
 
 const PLUGIN_NAME = 'opencode-otel'
 
@@ -21,26 +23,16 @@ interface PluginContext {
       log(opts: { body: Record<string, unknown> }): Promise<void>
     }
   }
-  readonly directory?: string
-  readonly project?: string
 }
 
-/**
- * Plugin entry point. Called by OpenCode when the plugin is loaded.
- *
- * Initializes OTEL providers and registers hooks for session event
- * capture. If initialization fails, returns empty hooks (graceful degradation).
- */
 export default async function plugin(ctx: PluginContext) {
   const log = (level: 'info' | 'error') => async (message: string) => {
     try {
       await ctx.client.app.log({
         body: { service: PLUGIN_NAME, level, message: `[${PLUGIN_NAME}] ${message}` },
       })
-    } catch (err) {
-      console.warn(
-        `[opencode-otel] Failed to send log to OpenCode: ${err instanceof Error ? err.message : String(err)}`,
-      )
+    } catch {
+      // swallow — can't use stderr here (would recurse)
     }
   }
 
@@ -50,53 +42,69 @@ export default async function plugin(ctx: PluginContext) {
   try {
     const { config, warnings } = await loadConfig()
 
-    for (const warning of warnings) {
-      await logError(warning)
+    for (const w of warnings) {
+      await logError(w)
     }
 
-    if (!config.tracesEndpoint && !config.logsEndpoint) {
-      await logInfo('No OTEL endpoints configured — plugin inactive')
+    if (!config.logsEndpoint) {
+      await logInfo('No OTEL logs endpoint configured — plugin inactive')
       return {}
     }
 
-    const { tracerProvider, loggerProvider, backends } = initProviders(config, {
-      directory: ctx.directory,
-      project: ctx.project,
-    })
+    const { loggerProvider, tracerProvider, logger, tracer } = initProviders(config)
 
-    if (backends.length === 0) {
-      await logInfo('No backends initialized — plugin inactive')
-      return {}
+    // Install stderr interceptor — emit log records with trace context
+    const interceptor = install((parsed: ParsedLine) => {
+      const traceCtx = getActiveTraceContext()
+      logger.emit({
+        body: parsed.body,
+        severityNumber: parsed.severityNumber,
+        severityText: parsed.severityText,
+        context: traceCtx,
+      })
+    }, config.maxLineLength)
+
+    registerShutdown(loggerProvider, tracerProvider, interceptor, (msg) => void logError(msg))
+
+    let safeEndpoint: string
+    try {
+      safeEndpoint = config.logsEndpoint ? new URL(config.logsEndpoint).host : 'unknown'
+    } catch {
+      safeEndpoint = '(endpoint configured)'
     }
-
-    registerShutdown(tracerProvider, loggerProvider, logError)
-
-    const hookLog = (msg: string): void => { void logError(msg) }
-    const eventHook = createEventHook(tracerProvider, loggerProvider, hookLog)
-    const chatMessageHook = createChatMessageHook(tracerProvider, hookLog)
-    const toolHooks = createToolExecuteHooks(tracerProvider, hookLog)
-
-    const backendNames = backends.map((b: BackendEntry) => b.name).join(', ')
     await logInfo(
-      `Initialized — backends: ${backendNames} (${backends.length} active), service: ${config.serviceName}`,
+      `Initialized — forwarding stderr logs via ${config.logsProtocol} to ${safeEndpoint}`,
     )
 
-    for (const backend of backends) {
-      await logInfo(`Backend [${backend.name}]: ${backend.endpointDisplay}`)
-    }
-
+    // Event hook: track session lifecycle for trace context correlation
     return {
-      // OpenCode plugin SDK wraps event as { event: Event }; unwrap and validate before passing to hook
       event: (input: { event: unknown }) => {
-        const ev = input.event
-        if (typeof ev === 'object' && ev !== null && typeof (ev as Record<string, unknown>).type === 'string') {
-          return eventHook(ev as Parameters<typeof eventHook>[0])
+        try {
+          const ev = input.event as { type?: string; properties?: Record<string, unknown> } | undefined
+          if (!ev || typeof ev.type !== 'string') return Promise.resolve()
+
+          const sessionId = (ev.properties as Record<string, unknown> | undefined)?.sessionID as string | undefined
+
+          if (!sessionId) return Promise.resolve()
+
+          switch (ev.type) {
+            case 'session.created':
+              startSession(tracer, sessionId)
+              break
+            case 'session.idle':
+            case 'session.deleted':
+              endSession(sessionId)
+              break
+            default:
+              // Any event with a sessionID activates that session's trace context
+              setActiveSession(sessionId)
+              break
+          }
+        } catch {
+          // swallow — never affect OpenCode
         }
         return Promise.resolve()
       },
-      'chat.message': chatMessageHook,
-      'tool.execute.before': toolHooks.before,
-      'tool.execute.after': toolHooks.after,
     }
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
