@@ -1,10 +1,6 @@
 {
-  "tracesEndpoint": "http://localhost:4318/v1/traces",
-  "tracesProtocol": "http/json",
-  "logsEndpoint": "http://localhost:4318/v1/logs",
-  "logsProtocol": "http/json",
+  "logsEndpoint": "http://triplog-otel-collector.fws.qa.nt.ctripcorp.com:8080",
+  "logsProtocol": "grpc",
   "serviceName": "opencode-agent",
-  "headers": {
-    "Authorization": "Bearer ${YOUR_API_TOKEN}"
-  }
+  "maxLineLength": 4096
 }
