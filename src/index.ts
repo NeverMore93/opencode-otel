@@ -2,7 +2,7 @@
  * opencode-otel — OpenCode plugin for unified observability via OpenTelemetry.
  *
  * Exports session traces and logs to any OTLP-compatible backend
- * (Langfuse, LangSmith, Jaeger, Grafana Tempo, etc.).
+ * (Jaeger, Grafana Tempo, LangSmith, Langfuse via OTLP, etc.).
  */
 
 import { loadConfig } from './config.ts'
@@ -54,7 +54,7 @@ export default async function plugin(ctx: PluginContext) {
       await logError(warning)
     }
 
-    if (!config.tracesEndpoint && !config.logsEndpoint && !config.langfuse) {
+    if (!config.tracesEndpoint && !config.logsEndpoint) {
       await logInfo('No OTEL endpoints configured — plugin inactive')
       return {}
     }

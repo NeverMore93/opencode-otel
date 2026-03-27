@@ -13,13 +13,6 @@ import { join } from 'node:path'
 /** Parsed representation of OTEL_EXPORTER_OTLP_HEADERS */
 export type OtelHeaders = Readonly<Record<string, string>>
 
-/** Langfuse-specific credentials. */
-export interface LangfuseConfig {
-  readonly publicKey: string
-  readonly secretKey: string
-  readonly baseUrl: string
-}
-
 /** Full plugin configuration. All fields are immutable after construction. */
 export interface OtelConfig {
   /** OTLP HTTP endpoint for traces (e.g. http://localhost:4318/v1/traces) */
@@ -30,8 +23,6 @@ export interface OtelConfig {
   readonly serviceName: string
   /** Parsed headers from OTEL_EXPORTER_OTLP_HEADERS or config file. */
   readonly headers: OtelHeaders
-  /** Langfuse backend credentials. Present only when all three vars are set. */
-  readonly langfuse: LangfuseConfig | undefined
 }
 
 /** Return type of loadConfig(). Includes any warnings collected during loading. */
@@ -49,11 +40,6 @@ interface ConfigFileShape {
   logsEndpoint?: unknown
   serviceName?: unknown
   headers?: unknown
-  langfuse?: {
-    publicKey?: unknown
-    secretKey?: unknown
-    baseUrl?: unknown
-  }
 }
 
 const DEFAULT_SERVICE_NAME = 'opencode-agent'
@@ -184,8 +170,8 @@ function fileHeaders(raw: unknown): OtelHeaders {
  *   env vars → config file → defaults
  *
  * The returned config object is deeply frozen (immutable).
- * Any non-fatal warnings (e.g. partial Langfuse config) are collected and
- * returned alongside the config so callers can log them via the plugin logger.
+ * Any non-fatal warnings are collected and returned alongside the config so
+ * callers can log them via the plugin logger.
  */
 export async function loadConfig(): Promise<ConfigResult> {
   const warnings: string[] = []
@@ -213,39 +199,12 @@ export async function loadConfig(): Promise<ConfigResult> {
       ? parseOtlpHeaders(rawEnvHeaders)
       : fileHeaders(fileConfig?.headers)
 
-  // Langfuse: detect when all three credentials are present.
-  const langfusePublicKey =
-    toOptionalString(process.env['LANGFUSE_PUBLIC_KEY']) ??
-    toOptionalString(fileConfig?.langfuse?.publicKey)
-  const langfuseSecretKey =
-    toOptionalString(process.env['LANGFUSE_SECRET_KEY']) ??
-    toOptionalString(fileConfig?.langfuse?.secretKey)
-  const langfuseBaseUrl =
-    toOptionalString(process.env['LANGFUSE_BASE_URL']) ??
-    toOptionalString(fileConfig?.langfuse?.baseUrl)
-
-  const langfuseCreds = [langfusePublicKey, langfuseSecretKey, langfuseBaseUrl]
-  const hasPartialLangfuse =
-    langfuseCreds.some(Boolean) && !langfuseCreds.every(Boolean)
-
-  if (hasPartialLangfuse) {
-    warnings.push(
-      'Partial Langfuse config detected — need LANGFUSE_PUBLIC_KEY, LANGFUSE_SECRET_KEY, and LANGFUSE_BASE_URL. Skipping Langfuse backend.',
-    )
-  }
-
-  const langfuse: LangfuseConfig | undefined =
-    langfusePublicKey && langfuseSecretKey && langfuseBaseUrl
-      ? Object.freeze({ publicKey: langfusePublicKey, secretKey: langfuseSecretKey, baseUrl: langfuseBaseUrl })
-      : undefined
-
   return {
     config: Object.freeze({
       tracesEndpoint,
       logsEndpoint,
       serviceName,
       headers,
-      langfuse,
     } satisfies OtelConfig),
     warnings,
   }

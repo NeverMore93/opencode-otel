@@ -1,8 +1,7 @@
 /**
  * Backend-specific processor factories for multi-backend fan-out.
  *
- * Creates SpanProcessors and LogRecordProcessors from config.
- * Supports simultaneous Langfuse (native SDK) + Generic OTLP export.
+ * Creates SpanProcessors and LogRecordProcessors for OTLP HTTP export.
  */
 
 import type { SpanProcessor } from '@opentelemetry/sdk-trace-base'
@@ -10,9 +9,7 @@ import { BatchSpanProcessor } from '@opentelemetry/sdk-trace-base'
 import type { LogRecordProcessor } from '@opentelemetry/sdk-logs'
 import { BatchLogRecordProcessor } from '@opentelemetry/sdk-logs'
 import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http'
-import { OTLPTraceExporter as OTLPProtoTraceExporter } from '@opentelemetry/exporter-trace-otlp-proto'
 import { OTLPLogExporter } from '@opentelemetry/exporter-logs-otlp-http'
-import { LangfuseSpanProcessor } from '@langfuse/otel'
 import type { OtelConfig } from '../config.ts'
 
 function sanitizeUrl(raw: string): string {
@@ -30,8 +27,8 @@ function sanitizeUrl(raw: string): string {
 }
 
 export interface BackendEntry {
-  readonly name: 'langfuse' | 'generic'
-  readonly type: 'langfuse-sdk' | 'otlp-http'
+  readonly name: string
+  readonly type: string
   readonly endpointDisplay: string
   readonly hasTraces: boolean
   readonly hasLogs: boolean
@@ -41,53 +38,6 @@ export interface ProcessorSet {
   readonly spanProcessors: ReadonlyArray<SpanProcessor>
   readonly logProcessors: ReadonlyArray<LogRecordProcessor>
   readonly backends: ReadonlyArray<BackendEntry>
-}
-
-/**
- * Create LangfuseSpanProcessor from config.
- *
- * CRITICAL: Passes shouldExportSpan: () => true to override the default
- * filter that only exports spans with gen_ai.* attributes. Our plugin's
- * session/message/tool spans don't have these attributes.
- */
-function createLangfuseProcessors(config: OtelConfig): {
-  spanProcessors: SpanProcessor[]
-  logProcessors: LogRecordProcessor[]
-  backend: BackendEntry
-} {
-  const langfuse = config.langfuse!
-
-  const baseUrl = langfuse.baseUrl.replace(/\/+$/, '')
-  const authHeaderValue = btoa(`${langfuse.publicKey}:${langfuse.secretKey}`)
-
-  // Langfuse OTLP endpoint only accepts HTTP/protobuf, not JSON.
-  // Pass a custom protobuf exporter to LangfuseSpanProcessor.
-  const exporter = new OTLPProtoTraceExporter({
-    url: `${baseUrl}/api/public/otel/v1/traces`,
-    headers: {
-      Authorization: `Basic ${authHeaderValue}`,
-    },
-  })
-
-  const processor = new LangfuseSpanProcessor({
-    publicKey: langfuse.publicKey,
-    secretKey: langfuse.secretKey,
-    baseUrl: langfuse.baseUrl,
-    shouldExportSpan: () => true,
-    exporter,
-  })
-
-  return {
-    spanProcessors: [processor as SpanProcessor],
-    logProcessors: [],
-    backend: {
-      name: 'langfuse',
-      type: 'langfuse-sdk',
-      endpointDisplay: baseUrl,
-      hasTraces: true,
-      hasLogs: false,
-    },
-  }
 }
 
 /**
@@ -141,27 +91,13 @@ function createGenericProcessors(config: OtelConfig): {
 /**
  * Create all processors from config. Supports fan-out to multiple backends.
  *
- * When both Langfuse credentials and generic OTLP endpoints are configured,
- * both backends are created independently. Each backend construction is
- * wrapped in try/catch — a failure in one does not prevent others.
+ * Each backend construction is wrapped in try/catch — a failure in one does
+ * not prevent others.
  */
 export function createProcessors(config: OtelConfig): ProcessorSet {
   const spanProcessors: SpanProcessor[] = []
   const logProcessors: LogRecordProcessor[] = []
   const backends: BackendEntry[] = []
-
-  if (config.langfuse) {
-    try {
-      const result = createLangfuseProcessors(config)
-      spanProcessors.push(...result.spanProcessors)
-      logProcessors.push(...result.logProcessors)
-      backends.push(result.backend)
-    } catch (err) {
-      console.warn(
-        `[opencode-otel] Failed to create Langfuse backend: ${err instanceof Error ? err.message : String(err)}`,
-      )
-    }
-  }
 
   if (config.tracesEndpoint || config.logsEndpoint) {
     try {

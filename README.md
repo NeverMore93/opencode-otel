@@ -2,7 +2,7 @@
 
 [![npm](https://img.shields.io/npm/v/opencode-otel)](https://www.npmjs.com/package/opencode-otel)
 
-[OpenCode](https://opencode.ai) observability plugin — export session traces and logs via OpenTelemetry to generic OTLP backends (Jaeger, Grafana Tempo, Datadog, etc.), with native Langfuse support via `@langfuse/otel`.
+OpenCode observability plugin — export session traces and logs via OpenTelemetry to any OTLP-compatible backend (Jaeger, Grafana Tempo, Datadog, LangSmith, Langfuse via OTLP, etc.).
 
 ## Quick Start
 
@@ -18,24 +18,12 @@ Add to `~/.config/opencode/opencode.json`:
 
 ### 2. Set Backend Endpoints
 
-**Langfuse** (recommended for LLM observability):
-
-```bash
-export LANGFUSE_PUBLIC_KEY="pk-lf-..."
-export LANGFUSE_SECRET_KEY="sk-lf-..."
-export LANGFUSE_BASE_URL="https://your-langfuse-host.example.com"
-```
-
-**Generic OTLP** (Jaeger, Grafana Tempo, etc.):
+**Generic OTLP** (Jaeger, Grafana Tempo, Langfuse, etc.):
 
 ```bash
 export OTEL_EXPORTER_OTLP_TRACES_ENDPOINT=http://localhost:4318/v1/traces
 export OTEL_EXPORTER_OTLP_LOGS_ENDPOINT=http://localhost:4318/v1/logs
 ```
-
-**Fan-out** (both simultaneously):
-
-Set both Langfuse credentials and generic OTLP endpoints. Traces are sent to all backends independently.
 
 ### 3. Start OpenCode
 
@@ -48,16 +36,6 @@ The plugin auto-initializes and begins exporting traces.
 ## Configuration
 
 All configuration via environment variables (or optional `~/.config/opencode/plugins/otel.json`):
-
-### Langfuse Backend
-
-| Env Variable | Required | Description |
-|-------------|:--------:|-------------|
-| `LANGFUSE_PUBLIC_KEY` | Yes* | Langfuse project public key |
-| `LANGFUSE_SECRET_KEY` | Yes* | Langfuse project secret key |
-| `LANGFUSE_BASE_URL` | Yes* | Langfuse instance URL |
-
-*All three required to activate Langfuse backend. Uses `@langfuse/otel` SDK (native API, not OTLP).
 
 ### Generic OTLP Backend
 
@@ -73,7 +51,7 @@ All configuration via environment variables (or optional `~/.config/opencode/plu
 |-------------|:--------:|---------|-------------|
 | `OTEL_SERVICE_NAME` | No | `opencode-agent` | `service.name` resource attribute |
 
-At least one backend (Langfuse or generic OTLP) must be configured for the plugin to activate.
+At least one OTLP endpoint must be configured for the plugin to activate.
 
 ### Config File
 
@@ -92,24 +70,18 @@ The example file covers all supported fields including `${VAR}` placeholder synt
   "logsEndpoint": "http://localhost:4318/v1/logs",
   "headers": {
     "Authorization": "Bearer ${YOUR_API_TOKEN}"
-  },
-  "langfuse": {
-    "publicKey": "${LANGFUSE_PUBLIC_KEY}",
-    "secretKey": "${LANGFUSE_SECRET_KEY}",
-    "baseUrl": "${LANGFUSE_BASE_URL}"
   }
 }
 ```
 
 Environment variables always take precedence over config file values.
 
-### Multi-Backend Fan-Out
+### Multi-Backend Support
 
-When both Langfuse credentials and generic OTLP endpoints are configured, traces are sent to **all backends simultaneously**. Each backend operates independently — a failure in one does not affect the other.
+Configure any OTLP-compatible backend by setting the appropriate endpoint and headers. Multiple backends can receive traces by routing through an OTLP collector (such as the OpenTelemetry Collector) that fans out to multiple destinations.
 
 ```text
 TracerProvider
-  ├─ LangfuseSpanProcessor  → Langfuse native API
   └─ BatchSpanProcessor     → Generic OTLP HTTP endpoint
 ```
 
@@ -137,7 +109,7 @@ Custom metadata passed when creating OpenCode sessions is automatically forwarde
 | Tool spans | `opencode.tool.metadata.*` | `tool.execute.after` hook |
 | Log records | `opencode.event.*` | Event properties |
 
-Only safe string/number values are forwarded. Objects, arrays, and empty strings are skipped. All values truncated to 256 characters.
+Only safe string/number/boolean values are forwarded. Objects, arrays, and empty strings are skipped. All values truncated to 256 characters.
 
 ## Event Log Records
 
@@ -153,13 +125,12 @@ High-frequency events (`message.part.updated`) are filtered out by default.
 
 ## Features
 
-- **Langfuse native SDK** — uses `@langfuse/otel` `LangfuseSpanProcessor` for reliable Langfuse delivery
-- **Multi-backend fan-out** — send traces to Langfuse and generic OTLP backends simultaneously
+- **Multi-backend support** — send traces to any OTLP-compatible backend
 - **Full trace hierarchy** — session → message → tool call spans with correct parent-child relationships
 - **Structured log records** — all session events with severity mapping
 - **Privacy by default** — no message text, file contents, or credentials captured
 - **Graceful degradation** — plugin errors never affect OpenCode
-- **Zero-config bootstrap** — reads standard `OTEL_EXPORTER_OTLP_*` and `LANGFUSE_*` env vars
+- **Zero-config bootstrap** — reads standard `OTEL_EXPORTER_OTLP_*` env vars
 - **Bun-compatible** — works around Bun's broken AsyncLocalStorage with explicit context map
 
 ## Development
