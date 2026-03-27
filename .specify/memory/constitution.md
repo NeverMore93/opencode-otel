@@ -73,7 +73,7 @@ All captured log lines are exported as standard OTEL LogRecords via the OpenTele
 - **Batching**: `BatchLogRecordProcessor` for efficient export (configurable interval and queue size)
 - **Resource attributes**: Auto-detected from `OTEL_RESOURCE_ATTRIBUTES` environment variable
 
-No trace export, no span creation, no context propagation. Log-only.
+Minimal trace support: a session root span is created per session (via event hook) to generate a traceId for log-to-session correlation. No detailed message/tool spans — business-level tracing is handled by opencode-plugin-langfuse.
 
 ### III. Non-Intrusive & Fault-Tolerant
 
@@ -115,23 +115,21 @@ Any code or configuration change MUST follow this sequence:
 
 ### Plugin Model
 - OpenCode npm plugin (`@opencode-ai/plugin` interface)
-- No hooks used (no event, no chat.message, no tool.execute)
-- Plugin returns empty hooks object `{}`
-- All work happens via the stderr interceptor installed at init time
+- Uses `event` hook for session lifecycle tracking (session.created / session.idle / session.deleted)
+- No chat.message or tool.execute hooks — business tracing handled by opencode-plugin-langfuse
+- Stderr interception installed at init time
 - Distribution: npm public registry as `opencode-otel`
 
-### Dependencies (minimal)
+### Dependencies
+- `@opentelemetry/api` — trace context API (for session span creation)
 - `@opentelemetry/api-logs` — OTEL Logs API
+- `@opentelemetry/sdk-trace-base` — TracerProvider for session spans
 - `@opentelemetry/sdk-logs` — LoggerProvider, BatchLogRecordProcessor
+- `@opentelemetry/exporter-trace-otlp-grpc` — gRPC trace export (session spans)
 - `@opentelemetry/exporter-logs-otlp-grpc` — gRPC log export
 - `@opentelemetry/exporter-logs-otlp-http` — HTTP log export (fallback)
 - `@opentelemetry/resources` — resource attributes + envDetector
 - `@grpc/grpc-js` (transitive) — pure JS gRPC client
-
-NOT needed (removed from previous architecture):
-- `@opentelemetry/api` — no tracing
-- `@opentelemetry/sdk-trace-base` — no spans
-- `@opentelemetry/exporter-trace-otlp-*` — no trace export
 
 ### Build
 - tsup (ESM output, tree-shaking, DTS generation)

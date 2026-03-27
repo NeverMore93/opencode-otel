@@ -57,22 +57,22 @@ export function initProviders(config: OtelConfig): ProviderResult {
   const loggerProvider = new LoggerProvider({ resource, logRecordProcessors: [logProcessor] })
   const logger = loggerProvider.getLogger('opencode-otel', '1.0.0')
 
-  // Trace exporter: gRPC only (same endpoint as logs, for session correlation)
-  // Traces go to the traces collector, not the logs collector
-  const traceExporter = config.tracesEndpoint
-    ? new GrpcTraceExporter({
-        url: config.tracesEndpoint,
-        metadata,
-      })
-    : new GrpcTraceExporter({
-        url: config.logsEndpoint, // fallback: same endpoint as logs
-        metadata,
-      })
+  // Trace exporter: only created if tracesEndpoint is explicitly configured.
+  // Session spans are used solely for log-to-session correlation (traceId).
+  // Without a traces endpoint, session tracking still works locally (traceId
+  // is generated and attached to logs) but spans won't be exported.
+  const spanProcessors: import('@opentelemetry/sdk-trace-base').SpanProcessor[] = []
+  if (config.tracesEndpoint) {
+    const traceExporter = new GrpcTraceExporter({
+      url: config.tracesEndpoint,
+      metadata,
+    })
+    spanProcessors.push(new BatchSpanProcessor(traceExporter))
+  }
 
-  const spanProcessor = new BatchSpanProcessor(traceExporter)
   const tracerProvider = new BasicTracerProvider({
     resource,
-    spanProcessors: [spanProcessor],
+    spanProcessors,
   })
   const tracer = tracerProvider.getTracer('opencode-otel', '1.0.0')
 
