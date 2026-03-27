@@ -27,8 +27,8 @@ function sanitizeUrl(raw: string): string {
 }
 
 export interface BackendEntry {
-  readonly name: string
-  readonly type: string
+  readonly name: 'generic'
+  readonly type: 'otlp-http'
   readonly endpointDisplay: string
   readonly hasTraces: boolean
   readonly hasLogs: boolean
