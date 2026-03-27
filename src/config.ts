@@ -13,12 +13,22 @@ import { join } from 'node:path'
 /** Parsed representation of OTEL_EXPORTER_OTLP_HEADERS */
 export type OtelHeaders = Readonly<Record<string, string>>
 
+/** Supported OTLP export protocols. */
+export type OtelProtocol = 'grpc' | 'http/json' | 'http/protobuf'
+
+const DEFAULT_PROTOCOL: OtelProtocol = 'http/json'
+const VALID_PROTOCOLS: ReadonlySet<string> = new Set(['grpc', 'http/json', 'http/protobuf'])
+
 /** Full plugin configuration. All fields are immutable after construction. */
 export interface OtelConfig {
   /** OTLP HTTP endpoint for traces (e.g. http://localhost:4318/v1/traces) */
   readonly tracesEndpoint: string | undefined
   /** OTLP HTTP endpoint for logs (e.g. http://localhost:4318/v1/logs) */
   readonly logsEndpoint: string | undefined
+  /** Protocol for trace export. Defaults to "http/json". */
+  readonly tracesProtocol: OtelProtocol
+  /** Protocol for log export. Defaults to "http/json". */
+  readonly logsProtocol: OtelProtocol
   /** service.name resource attribute. Defaults to "opencode-agent". */
   readonly serviceName: string
   /** Parsed headers from OTEL_EXPORTER_OTLP_HEADERS or config file. */
@@ -38,6 +48,8 @@ export interface ConfigResult {
 interface ConfigFileShape {
   tracesEndpoint?: unknown
   logsEndpoint?: unknown
+  tracesProtocol?: unknown
+  logsProtocol?: unknown
   serviceName?: unknown
   headers?: unknown
 }
@@ -163,6 +175,20 @@ function fileHeaders(raw: unknown): OtelHeaders {
   return Object.freeze({})
 }
 
+function parseProtocol(
+  raw: string | undefined,
+  signal: string,
+  warnings: string[],
+): OtelProtocol {
+  if (raw === undefined) return DEFAULT_PROTOCOL
+  const normalized = raw.toLowerCase().trim()
+  if (VALID_PROTOCOLS.has(normalized)) return normalized as OtelProtocol
+  warnings.push(
+    `Unrecognized ${signal} protocol "${raw}" — falling back to "${DEFAULT_PROTOCOL}". Valid values: ${[...VALID_PROTOCOLS].join(', ')}`,
+  )
+  return DEFAULT_PROTOCOL
+}
+
 /**
  * Load and merge configuration from all sources.
  *
@@ -186,6 +212,17 @@ export async function loadConfig(): Promise<ConfigResult> {
     toOptionalString(process.env['OTEL_EXPORTER_OTLP_LOGS_ENDPOINT']) ??
     toOptionalString(fileConfig?.logsEndpoint)
 
+  // Protocol: env var wins over file config; default to http/json
+  const rawTracesProtocol =
+    toOptionalString(process.env['OTEL_EXPORTER_OTLP_TRACES_PROTOCOL']) ??
+    toOptionalString(fileConfig?.tracesProtocol)
+  const tracesProtocol = parseProtocol(rawTracesProtocol, 'traces', warnings)
+
+  const rawLogsProtocol =
+    toOptionalString(process.env['OTEL_EXPORTER_OTLP_LOGS_PROTOCOL']) ??
+    toOptionalString(fileConfig?.logsProtocol)
+  const logsProtocol = parseProtocol(rawLogsProtocol, 'logs', warnings)
+
   const serviceName =
     toOptionalString(process.env['OTEL_SERVICE_NAME']) ??
     toOptionalString(fileConfig?.serviceName) ??
@@ -203,6 +240,8 @@ export async function loadConfig(): Promise<ConfigResult> {
     config: Object.freeze({
       tracesEndpoint,
       logsEndpoint,
+      tracesProtocol,
+      logsProtocol,
       serviceName,
       headers,
     } satisfies OtelConfig),

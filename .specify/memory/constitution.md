@@ -1,6 +1,26 @@
 <!--
 Sync Impact Report
 ===================
+Version change: 1.2.0 → 1.3.0 (MINOR — add gRPC support to Technical Constraints)
+
+Modified principles: none
+Modified sections:
+  - Technical Constraints → Runtime: removed "no gRPC" restriction
+  - Technical Constraints → Dependencies: added gRPC exporter packages
+
+Added sections: none
+Removed sections: none
+
+Templates requiring updates:
+  - README.md — ✅ updated (gRPC configuration added)
+  - CLAUDE.md — ✅ updated (gRPC deps and constraints)
+
+Follow-up TODOs: none
+-->
+
+<!--
+Sync Impact Report
+===================
 Version change: 1.1.1 → 1.2.0 (MINOR — remove Langfuse from mandated backends)
 
 Modified principles:
@@ -92,8 +112,8 @@ README.md MUST always reflect the current state of the codebase. Do not defer RE
 ## Technical Constraints
 
 ### Runtime
-- **Bun** (TypeScript/JavaScript) — no gRPC native modules, broken AsyncLocalStorage
-- **OTLP HTTP only** — both JSON and protobuf supported, no gRPC
+- **Bun** (TypeScript/JavaScript) — broken AsyncLocalStorage
+- **OTLP HTTP + gRPC** — HTTP/JSON (default), gRPC via `@grpc/grpc-js` (pure JS, 95% Bun compat for unary calls)
 - **Manual context propagation** — session-scoped `Map<sessionID, Context>` instead of AsyncLocalStorage
 
 ### Plugin Model
@@ -108,6 +128,9 @@ README.md MUST always reflect the current state of the codebase. Do not defer RE
 - `@opentelemetry/exporter-trace-otlp-http` — OTLP HTTP trace export
 - `@opentelemetry/exporter-logs-otlp-http` — OTLP HTTP log export
 - `@opentelemetry/resources` — resource attributes
+- `@opentelemetry/exporter-trace-otlp-grpc` — OTLP gRPC trace export
+- `@opentelemetry/exporter-logs-otlp-grpc` — OTLP gRPC log export
+- `@grpc/grpc-js` (transitive) — pure JS gRPC client
 
 ### Build
 - tsup (ESM output, tree-shaking, DTS generation)
@@ -140,4 +163,4 @@ Constitution supersedes all other practices. Amendments require:
 2. Impact analysis on existing backends
 3. Backward compatibility assessment (config format, env var names)
 
-**Version**: 1.2.0 | **Ratified**: 2026-03-01 | **Last Amended**: 2026-03-27
+**Version**: 1.3.0 | **Ratified**: 2026-03-01 | **Last Amended**: 2026-03-27

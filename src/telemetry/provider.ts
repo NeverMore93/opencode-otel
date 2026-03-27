@@ -7,7 +7,7 @@
 
 import { hostname as osHostname } from 'node:os'
 import pkg from '../../package.json'
-import { resourceFromAttributes } from '@opentelemetry/resources'
+import { resourceFromAttributes, envDetector } from '@opentelemetry/resources'
 import { BasicTracerProvider } from '@opentelemetry/sdk-trace-base'
 import { LoggerProvider } from '@opentelemetry/sdk-logs'
 import type { OtelConfig } from '../config.ts'
@@ -36,13 +36,19 @@ export function initProviders(
   config: OtelConfig,
   pluginContext?: PluginContextAttrs,
 ): Providers {
-  const resource = resourceFromAttributes({
+  // Merge env-detected resource attributes (OTEL_RESOURCE_ATTRIBUTES) with explicit ones.
+  // Explicit attributes take precedence over env-detected ones.
+  const envResource = resourceFromAttributes(
+    (envDetector.detect().attributes ?? {}) as Record<string, import('@opentelemetry/api').AttributeValue>,
+  )
+  const explicitResource = resourceFromAttributes({
     'service.name': config.serviceName,
     'service.version': pkg.version,
     'service.instance.id': `${getHostname()}-${process.pid}`,
     ...(pluginContext?.directory ? { 'opencode.directory': pluginContext.directory } : {}),
     ...(pluginContext?.project ? { 'opencode.project': pluginContext.project } : {}),
   })
+  const resource = envResource.merge(explicitResource)
 
   const processorSet = createProcessors(config)
 

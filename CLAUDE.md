@@ -1,4 +1,4 @@
-# CLAUDE.md
+﻿# CLAUDE.md
 
 ## What This Project Is
 
@@ -8,7 +8,7 @@
 
 - **Language**: TypeScript 5.5+ / Bun runtime
 - **Project Type**: npm library (OpenCode plugin)
-- **Dependencies**: `@opentelemetry/api@1.9.x`, `@opentelemetry/sdk-trace-base@2.5.x`, `@opentelemetry/sdk-logs@0.212.x`, `@opentelemetry/exporter-trace-otlp-http`, `@opentelemetry/exporter-logs-otlp-http`, `@opentelemetry/resources@2.5.x`
+- **Dependencies**: `@opentelemetry/api@1.9.x`, `@opentelemetry/sdk-trace-base@2.5.x`, `@opentelemetry/sdk-logs@0.212.x`, `@opentelemetry/exporter-trace-otlp-http`, `@opentelemetry/exporter-logs-otlp-http`, `@opentelemetry/exporter-trace-otlp-grpc`, `@opentelemetry/exporter-logs-otlp-grpc`, `@grpc/grpc-js`, `@opentelemetry/resources@2.5.x`
 - **Plugin SDK**: `@opencode-ai/plugin@>=1.1.0` (peer dependency)
 - **Build**: tsup (ESM output, external `@opencode-ai/*`)
 - **Testing**: `bun test` with `InMemorySpanExporter`
@@ -18,7 +18,7 @@
 - **Cannot modify OpenCode source code** — integration must be via npm plugin mechanism only
 - **Bun AsyncLocalStorage is broken** — use explicit `Map<sessionID, Context>` for span context propagation, never `context.with()`
 - **OTEL JS Logs SDK is experimental** (0.212.x) — may have breaking changes
-- **OTLP HTTP only** — no gRPC (Bun doesn't support `@grpc/grpc-js` native modules)
+- **OTLP HTTP (default) and gRPC supported** — via `@grpc/grpc-js` (pure JS, 95% Bun compat)
 - **Data sensitivity** — never include message text, file contents, tool output, or credentials in spans/logs
 
 ## Attribute Forwarding
@@ -39,7 +39,7 @@ Plugin Entry (src/index.ts)
   ├─ Config (src/config.ts) ← env vars + ~/.config/opencode/plugins/otel.json
   ├─ Telemetry
   │   ├─ provider.ts   ← TracerProvider + LoggerProvider setup (+ pluginContext → Resource)
-  │   ├─ backends.ts   ← Backend processor factories (OTLP HTTP export)
+  │   ├─ backends.ts   ← Backend processor factories (OTLP HTTP + gRPC export)
   │   ├─ context.ts    ← Session context map (Bun workaround)
   │   └─ shutdown.ts   ← Graceful shutdown
   └─ Hooks (source-aware: dedicated hooks = 'primary', event hook = 'fallback')
@@ -53,6 +53,8 @@ Plugin Entry (src/index.ts)
 | Backend | Env Vars | Auth |
 |---------|----------|------|
 | Generic OTEL | `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT`, `OTEL_EXPORTER_OTLP_LOGS_ENDPOINT` | `OTEL_EXPORTER_OTLP_HEADERS` |
+| Protocol | `OTEL_EXPORTER_OTLP_TRACES_PROTOCOL`, `OTEL_EXPORTER_OTLP_LOGS_PROTOCOL` | Default: `http/json` |
+| Resources | `OTEL_RESOURCE_ATTRIBUTES` | Auto-parsed by SDK |
 
 ## Design Documents
 

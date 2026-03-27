@@ -25,6 +25,15 @@ export OTEL_EXPORTER_OTLP_TRACES_ENDPOINT=http://localhost:4318/v1/traces
 export OTEL_EXPORTER_OTLP_LOGS_ENDPOINT=http://localhost:4318/v1/logs
 ```
 
+**gRPC** (for collectors that only accept gRPC):
+
+```bash
+export OTEL_EXPORTER_OTLP_TRACES_ENDPOINT=http://collector:8080
+export OTEL_EXPORTER_OTLP_TRACES_PROTOCOL=grpc
+export OTEL_EXPORTER_OTLP_LOGS_ENDPOINT=http://log-collector:8080
+export OTEL_EXPORTER_OTLP_LOGS_PROTOCOL=grpc
+```
+
 ### 3. Start OpenCode
 
 ```bash
@@ -44,6 +53,15 @@ All configuration via environment variables (or optional `~/.config/opencode/plu
 | `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` | No | — | OTLP HTTP endpoint for traces |
 | `OTEL_EXPORTER_OTLP_LOGS_ENDPOINT` | No | — | OTLP HTTP endpoint for logs |
 | `OTEL_EXPORTER_OTLP_HEADERS` | No | — | Comma-separated `key=value` headers |
+
+### Protocol Selection
+
+| Env Variable | Required | Default | Description |
+|-------------|:--------:|---------|-------------|
+| `OTEL_EXPORTER_OTLP_TRACES_PROTOCOL` | No | `http/json` | Protocol for traces: `grpc`, `http/json`, or `http/protobuf` |
+| `OTEL_EXPORTER_OTLP_LOGS_PROTOCOL` | No | `http/json` | Protocol for logs: `grpc`, `http/json`, or `http/protobuf` |
+
+Traces and logs can use different protocols independently. When using `grpc`, the endpoint should NOT include `/v1/traces` path suffix.
 
 ### Common
 
@@ -68,6 +86,8 @@ The example file covers all supported fields including `${VAR}` placeholder synt
   "serviceName": "my-agent",
   "tracesEndpoint": "http://localhost:4318/v1/traces",
   "logsEndpoint": "http://localhost:4318/v1/logs",
+  "tracesProtocol": "http/json",
+  "logsProtocol": "http/json",
   "headers": {
     "Authorization": "Bearer ${YOUR_API_TOKEN}"
   }
@@ -125,12 +145,13 @@ High-frequency events (`message.part.updated`) are filtered out by default.
 
 ## Features
 
-- **Multi-backend support** — send traces to any OTLP-compatible backend
+- **Multi-backend support** — send traces to any OTLP-compatible backend via HTTP or gRPC
+- **gRPC support** — connect to gRPC-only collectors via `@grpc/grpc-js`
 - **Full trace hierarchy** — session → message → tool call spans with correct parent-child relationships
 - **Structured log records** — all session events with severity mapping
 - **Privacy by default** — no message text, file contents, or credentials captured
 - **Graceful degradation** — plugin errors never affect OpenCode
-- **Zero-config bootstrap** — reads standard `OTEL_EXPORTER_OTLP_*` env vars
+- **Zero-config bootstrap** — reads standard `OTEL_EXPORTER_OTLP_*` env vars including `*_PROTOCOL` for transport selection
 - **Bun-compatible** — works around Bun's broken AsyncLocalStorage with explicit context map
 
 ## Development
