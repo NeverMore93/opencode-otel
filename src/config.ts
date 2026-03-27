@@ -123,10 +123,12 @@ export async function loadConfig(): Promise<ConfigResult> {
     ? parseHeaders(rawHeaders)
     : Object.freeze({})
 
-  const maxLineLength =
-    typeof fileConfig?.maxLineLength === 'number'
-      ? fileConfig.maxLineLength
-      : DEFAULT_MAX_LINE_LENGTH
+  const rawMaxLineLength = typeof fileConfig?.maxLineLength === 'number'
+    ? fileConfig.maxLineLength
+    : DEFAULT_MAX_LINE_LENGTH
+  const maxLineLength = Number.isFinite(rawMaxLineLength) && rawMaxLineLength > 0
+    ? Math.floor(rawMaxLineLength)
+    : DEFAULT_MAX_LINE_LENGTH
 
   return {
     config: Object.freeze({ logsEndpoint, logsProtocol, tracesEndpoint, serviceName, headers, maxLineLength }),

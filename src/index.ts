@@ -66,8 +66,14 @@ export default async function plugin(ctx: PluginContext) {
 
     registerShutdown(loggerProvider, tracerProvider, interceptor, (msg) => void logError(msg))
 
+    let safeEndpoint: string
+    try {
+      safeEndpoint = config.logsEndpoint ? new URL(config.logsEndpoint).host : 'unknown'
+    } catch {
+      safeEndpoint = '(endpoint configured)'
+    }
     await logInfo(
-      `Initialized — forwarding stderr logs via ${config.logsProtocol} to ${config.logsEndpoint}`,
+      `Initialized — forwarding stderr logs via ${config.logsProtocol} to ${safeEndpoint}`,
     )
 
     // Event hook: track session lifecycle for trace context correlation

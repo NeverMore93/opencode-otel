@@ -24,15 +24,19 @@ export function registerShutdown(
     try {
       interceptor.flush()
       endAllSessions()
+
+      let timer: ReturnType<typeof setTimeout> | undefined
       await Promise.race([
         Promise.all([
           loggerProvider.forceFlush(),
           tracerProvider.forceFlush(),
         ]),
-        new Promise((_, reject) =>
-          setTimeout(() => reject(new Error('Flush timeout')), SHUTDOWN_TIMEOUT_MS),
-        ),
-      ])
+        new Promise((_, reject) => {
+          timer = setTimeout(() => reject(new Error('Flush timeout')), SHUTDOWN_TIMEOUT_MS)
+        }),
+      ]).finally(() => {
+        if (timer) clearTimeout(timer)
+      })
     } catch (err) {
       logError(`Shutdown flush failed: ${err instanceof Error ? err.message : String(err)}`)
     }
@@ -46,6 +50,6 @@ export function registerShutdown(
   }
 
   process.on('beforeExit', () => void shutdown())
-  process.on('SIGTERM', () => void shutdown())
-  process.on('SIGINT', () => void shutdown())
+  process.on('SIGTERM', () => { void shutdown().finally(() => process.exit(0)) })
+  process.on('SIGINT', () => { void shutdown().finally(() => process.exit(0)) })
 }

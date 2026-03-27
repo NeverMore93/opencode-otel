@@ -36,9 +36,7 @@ export function endSession(sessionId: string): void {
   span.end()
   sessions.delete(sessionId)
   if (activeSessionId === sessionId) {
-    // Switch to the most recent remaining session, or undefined
-    const remaining = [...sessions.keys()]
-    activeSessionId = remaining.length > 0 ? remaining[remaining.length - 1] : undefined
+    activeSessionId = undefined
   }
 }
 

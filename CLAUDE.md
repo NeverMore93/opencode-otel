@@ -8,7 +8,7 @@
 
 - **Language**: TypeScript 5.5+ / Bun runtime
 - **Project Type**: npm library (OpenCode plugin)
-- **Dependencies**: `@opentelemetry/api-logs`, `@opentelemetry/sdk-logs`, `@opentelemetry/exporter-logs-otlp-grpc`, `@opentelemetry/exporter-logs-otlp-http`, `@opentelemetry/resources`, `@grpc/grpc-js` (transitive)
+- **Dependencies**: `@opentelemetry/api`, `@opentelemetry/sdk-trace-base`, `@opentelemetry/exporter-trace-otlp-grpc`, `@opentelemetry/api-logs`, `@opentelemetry/sdk-logs`, `@opentelemetry/exporter-logs-otlp-grpc`, `@opentelemetry/exporter-logs-otlp-http`, `@opentelemetry/resources`, `@grpc/grpc-js` (transitive)
 - **Plugin SDK**: `@opencode-ai/plugin@>=1.1.0` (peer dependency)
 - **Build**: tsup (ESM output, external `@opencode-ai/*`)
 - **Testing**: `bun test`
@@ -18,8 +18,8 @@
 - **Cannot modify OpenCode source code** — integration via npm plugin mechanism only
 - **Monkey-patch `process.stderr.write`** — runtime interception of log output (JS dynamic proxy pattern)
 - **gRPC primary, HTTP fallback** — company TripLog collector only accepts gRPC on :8080
-- **No hooks used** — plugin returns empty `{}`, all work via stderr interceptor
-- **No traces/spans** — business events handled by opencode-plugin-langfuse
+- **Uses `event` hook for session lifecycle tracking** (`session.created`/`idle`/`deleted`) — creates root spans per session so all logs share the same traceId
+- **No business traces/spans** — business events handled by opencode-plugin-langfuse
 
 ## Architecture
 
@@ -38,6 +38,7 @@ Plugin Entry (src/index.ts)
 | `OTEL_EXPORTER_OTLP_LOGS_ENDPOINT` | — | Log collector endpoint (required) |
 | `OTEL_EXPORTER_OTLP_LOGS_PROTOCOL` | `grpc` | Protocol: `grpc` or `http/json` |
 | `OTEL_SERVICE_NAME` | `opencode-agent` | service.name resource attribute |
+| `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` | — | Traces endpoint (optional, for session span export) |
 | `OTEL_RESOURCE_ATTRIBUTES` | — | Additional resource attributes (auto-parsed by SDK) |
 
 ## Design Documents
