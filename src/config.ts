@@ -123,12 +123,19 @@ export async function loadConfig(): Promise<ConfigResult> {
     ? parseHeaders(rawHeaders)
     : Object.freeze({})
 
-  const rawMaxLineLength = typeof fileConfig?.maxLineLength === 'number'
-    ? fileConfig.maxLineLength
-    : DEFAULT_MAX_LINE_LENGTH
-  const maxLineLength = Number.isFinite(rawMaxLineLength) && rawMaxLineLength > 0
-    ? Math.floor(rawMaxLineLength)
-    : DEFAULT_MAX_LINE_LENGTH
+  const envMaxLineLengthStr = process.env['OTEL_MAX_LINE_LENGTH']
+  const envMaxLineLengthNum = envMaxLineLengthStr !== undefined && envMaxLineLengthStr.trim() !== ''
+    ? Number(envMaxLineLengthStr)
+    : undefined
+  const candidates = [
+    envMaxLineLengthNum,
+    typeof fileConfig?.maxLineLength === 'number' ? fileConfig.maxLineLength : undefined,
+    DEFAULT_MAX_LINE_LENGTH,
+  ]
+  const maxLineLength = Math.floor(
+    candidates.find((v): v is number => v !== undefined && Number.isFinite(v) && v >= 1)
+    ?? DEFAULT_MAX_LINE_LENGTH,
+  )
 
   return {
     config: Object.freeze({ logsEndpoint, logsProtocol, tracesEndpoint, serviceName, headers, maxLineLength }),
