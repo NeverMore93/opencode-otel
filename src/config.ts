@@ -133,7 +133,7 @@ export async function loadConfig(): Promise<ConfigResult> {
     DEFAULT_MAX_LINE_LENGTH,
   ]
   const maxLineLength = Math.floor(
-    candidates.find((v): v is number => v !== undefined && Number.isFinite(v) && v > 0)
+    candidates.find((v): v is number => v !== undefined && Number.isFinite(v) && v >= 1)
     ?? DEFAULT_MAX_LINE_LENGTH,
   )
 
