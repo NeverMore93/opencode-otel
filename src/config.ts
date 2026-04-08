@@ -123,9 +123,12 @@ export async function loadConfig(): Promise<ConfigResult> {
     ? parseHeaders(rawHeaders)
     : Object.freeze({})
 
-  const rawMaxLineLength = typeof fileConfig?.maxLineLength === 'number'
-    ? fileConfig.maxLineLength
-    : DEFAULT_MAX_LINE_LENGTH
+  const envMaxLineLength = process.env['OTEL_MAX_LINE_LENGTH']
+  const rawMaxLineLength = envMaxLineLength !== undefined && envMaxLineLength.trim() !== ''
+    ? Number(envMaxLineLength)
+    : typeof fileConfig?.maxLineLength === 'number'
+      ? fileConfig.maxLineLength
+      : DEFAULT_MAX_LINE_LENGTH
   const maxLineLength = Number.isFinite(rawMaxLineLength) && rawMaxLineLength > 0
     ? Math.floor(rawMaxLineLength)
     : DEFAULT_MAX_LINE_LENGTH
