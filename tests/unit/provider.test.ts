@@ -10,6 +10,22 @@ import type { BatRuntimeMetadata, IdentitySource, OtelConfig } from '../../src/c
 const require = createRequire(import.meta.url)
 const packageJson = require('../../package.json') as { version: string }
 
+function getActiveLogProcessorName(
+  result: ReturnType<typeof initProviders>,
+): string {
+  return (
+    result.loggerProvider as unknown as {
+      _sharedState: {
+        activeProcessor: {
+          constructor: {
+            name: string
+          }
+        }
+      }
+    }
+  )._sharedState.activeProcessor.constructor.name
+}
+
 function createConfig(overrides: Partial<OtelConfig> = {}): OtelConfig {
   const runtimeMetadata: BatRuntimeMetadata = {
     appId: '100059443',
@@ -132,7 +148,7 @@ describe('resolveResourceAttributes', () => {
 })
 
 describe('initProviders', () => {
-  test('returns provider diagnostics with optional trace route enabled only when configured', () => {
+  test('returns provider diagnostics with optional trace route enabled only when configured', async () => {
     const result = initProviders(createConfig({
       tracesEndpoint: 'http://bat-otel-collector.fws.qa.nt.ctripcorp.com:8080',
     }))
@@ -140,9 +156,22 @@ describe('initProviders', () => {
     expect(result.routes.logs.enabled).toBe(true)
     expect(result.routes.traces.enabled).toBe(true)
     expect(result.resourceAttributes['service.name']).toBe('pay-dev-agent')
+    expect(getActiveLogProcessorName(result)).toBe('MultiLogRecordProcessor')
 
-    void result.loggerProvider.shutdown()
-    void result.tracerProvider.shutdown()
+    await result.loggerProvider.shutdown()
+    await result.tracerProvider.shutdown()
+  })
+
+  test('does not register log processors when logs are disabled', async () => {
+    const result = initProviders(createConfig({
+      logsEndpoint: undefined,
+    }))
+
+    expect(result.routes.logs.enabled).toBe(false)
+    expect(getActiveLogProcessorName(result)).toBe('NoopLogRecordProcessor')
+
+    await result.loggerProvider.shutdown()
+    await result.tracerProvider.shutdown()
   })
 
   test('does not hard-code the current package version in provider source', async () => {

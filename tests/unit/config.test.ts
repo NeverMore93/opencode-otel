@@ -1,4 +1,7 @@
 import { afterEach, describe, expect, test } from 'bun:test'
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { loadConfig } from '../../src/config.ts'
 
 const ENV_KEYS = [
@@ -23,22 +26,48 @@ const ENV_KEYS = [
   'CDOS_REGION',
   'CDOS_POD_IP',
   'HOSTNAME',
+  'HOME',
+  'USERPROFILE',
+  'BAT_TIMEOUT_PLACEHOLDER',
+  'BAT_MAX_LINE_LENGTH_PLACEHOLDER',
 ] as const
 
 const ORIGINAL_ENV = new Map<string, string | undefined>(
   ENV_KEYS.map((key) => [key, process.env[key]]),
 )
+const TEMP_HOMES = new Set<string>()
 
-afterEach(() => {
+async function setTempHome(config: Record<string, unknown> | null = null): Promise<void> {
+  const homeDir = await mkdtemp(join(tmpdir(), 'opencode-otel-test-'))
+  TEMP_HOMES.add(homeDir)
+
+  process.env['HOME'] = homeDir
+  process.env['USERPROFILE'] = homeDir
+
+  if (!config) return
+
+  const configDir = join(homeDir, '.config', 'opencode', 'plugins')
+  await mkdir(configDir, { recursive: true })
+  await writeFile(join(configDir, 'otel.json'), JSON.stringify(config), 'utf8')
+}
+
+afterEach(async () => {
   for (const key of ENV_KEYS) {
     const value = ORIGINAL_ENV.get(key)
     if (value === undefined) delete process.env[key]
     else process.env[key] = value
   }
+
+  for (const homeDir of TEMP_HOMES) {
+    await rm(homeDir, { force: true, recursive: true })
+  }
+  TEMP_HOMES.clear()
 })
 
 describe('loadConfig', () => {
   test('returns defaults when no OTEL env vars are set', async () => {
+    await setTempHome()
+
     for (const key of ENV_KEYS) delete process.env[key]
 
     const { config, warnings } = await loadConfig()
@@ -56,6 +85,54 @@ describe('loadConfig', () => {
     expect(config.runtimeMetadata.hostName).toBeDefined()
     expect(warnings).toEqual([])
     expect(Object.isFrozen(config)).toBe(true)
+  })
+
+  test('merges otel.json key pairs with env overrides for headers and resource attributes', async () => {
+    await setTempHome({
+      headers: {
+        authorization: 'Bearer file-token',
+        'x-file-header': 'from-file',
+      },
+      resourceAttributes: {
+        'service.name': 'file-service',
+        'group.id': 'file-group',
+        idc: 'FILE-IDC',
+      },
+    })
+
+    process.env['OTEL_EXPORTER_OTLP_HEADERS'] = 'authorization=Bearer env-token,x-env-header=from-env'
+    process.env['OTEL_RESOURCE_ATTRIBUTES'] = 'group.id=env-group,custom.attr=env-attr'
+
+    const { config, warnings } = await loadConfig()
+
+    expect(config.headers).toEqual({
+      authorization: 'Bearer env-token',
+      'x-file-header': 'from-file',
+      'x-env-header': 'from-env',
+    })
+    expect(config.explicitResourceAttributes).toEqual({
+      'service.name': 'file-service',
+      'group.id': 'env-group',
+      idc: 'FILE-IDC',
+      'custom.attr': 'env-attr',
+    })
+    expect(warnings).toEqual([])
+  })
+
+  test('parses placeholder-backed numeric values from otel.json', async () => {
+    await setTempHome({
+      timeoutMs: '${BAT_TIMEOUT_PLACEHOLDER}',
+      maxLineLength: '${BAT_MAX_LINE_LENGTH_PLACEHOLDER}',
+    })
+
+    process.env['BAT_TIMEOUT_PLACEHOLDER'] = '2500'
+    process.env['BAT_MAX_LINE_LENGTH_PLACEHOLDER'] = '8192'
+
+    const { config, warnings } = await loadConfig()
+
+    expect(config.timeoutMs).toBe(2500)
+    expect(config.maxLineLength).toBe(8192)
+    expect(warnings).toEqual([])
   })
 
   test('parses BAT endpoints, timeout, headers, explicit attrs, and runtime metadata', async () => {

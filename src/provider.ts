@@ -21,6 +21,7 @@ import type {
   OtelProtocol,
 } from './config.ts'
 import { INSTRUMENTATION_VERSION } from './version.ts'
+
 const TRACKED_RESOURCE_KEYS = new Set<string>([
   'service.name',
   'group.id',
@@ -322,21 +323,24 @@ export function initProviders(config: OtelConfig): ProviderResult {
   const resource = resourceFromAttributes(resourceResolution.attributes)
   const hasHeaders = Object.keys(config.headers).length > 0
   const metadata = hasHeaders ? grpcMetadata({ ...config.headers }) : undefined
+  const logProcessors: BatchLogRecordProcessor[] = []
+  if (routes.logs.enabled && config.logsEndpoint) {
+    const logExporter = config.logsProtocol === 'grpc'
+      ? new GrpcLogExporter({
+          url: config.logsEndpoint,
+          metadata,
+          timeoutMillis: config.timeoutMs,
+        })
+      : new HttpLogExporter({
+          url: config.logsEndpoint,
+          headers: hasHeaders ? { ...config.headers } : undefined,
+          timeoutMillis: config.timeoutMs,
+        })
 
-  const logExporter = config.logsProtocol === 'grpc'
-    ? new GrpcLogExporter({
-        url: config.logsEndpoint,
-        metadata,
-        timeoutMillis: config.timeoutMs,
-      })
-    : new HttpLogExporter({
-        url: config.logsEndpoint,
-        headers: hasHeaders ? { ...config.headers } : undefined,
-        timeoutMillis: config.timeoutMs,
-      })
+    logProcessors.push(new BatchLogRecordProcessor(logExporter))
+  }
 
-  const logProcessor = new BatchLogRecordProcessor(logExporter)
-  const loggerProvider = new LoggerProvider({ resource, logRecordProcessors: [logProcessor] })
+  const loggerProvider = new LoggerProvider({ resource, processors: logProcessors })
   const logger = loggerProvider.getLogger('opencode-otel', INSTRUMENTATION_VERSION)
 
   const spanProcessors: import('@opentelemetry/sdk-trace-base').SpanProcessor[] = []

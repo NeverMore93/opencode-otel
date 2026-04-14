@@ -54,7 +54,10 @@ const DEFAULT_TRACE_PROTOCOL = 'grpc'
 const DEFAULT_SERVICE_NAME = 'opencode-agent'
 const DEFAULT_MAX_LINE_LENGTH = 4096
 const VALID_PROTOCOLS = new Set<string>(['grpc', 'http/json'])
-const CONFIG_FILE_PATH = join(homedir(), '.config', 'opencode', 'plugins', 'otel.json')
+
+function getConfigFilePath(): string {
+  return join(homedir(), '.config', 'opencode', 'plugins', 'otel.json')
+}
 
 function toOptionalString(value: unknown): string | undefined {
   if (typeof value === 'string' && value.trim() !== '') return value.trim()
@@ -64,6 +67,65 @@ function toOptionalString(value: unknown): string | undefined {
 function parseOtelKeyPairs(raw: string | undefined): Readonly<Record<string, string>> {
   if (!raw || raw.trim() === '') return Object.freeze({})
   return Object.freeze(parseKeyPairsIntoRecord(raw))
+}
+
+function serializeConfigKeyPairs(
+  raw: unknown,
+  label: string,
+  warnings: string[],
+): string | undefined {
+  const rawString = toOptionalString(raw)
+  if (rawString) return rawString
+  if (raw === undefined || raw === null) return undefined
+
+  if (Array.isArray(raw) || typeof raw !== 'object') {
+    warnings.push(`${label} must be a string or object — ignoring configured value`)
+    return undefined
+  }
+
+  const serializedPairs: string[] = []
+  for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
+    const normalizedKey = key.trim()
+    if (normalizedKey === '') continue
+
+    if (value === undefined || value === null) {
+      warnings.push(`${label}.${normalizedKey} must not be empty — ignoring configured value`)
+      continue
+    }
+
+    if (
+      typeof value !== 'string' &&
+      typeof value !== 'number' &&
+      typeof value !== 'boolean'
+    ) {
+      warnings.push(`${label}.${normalizedKey} must be a string, number, or boolean — ignoring configured value`)
+      continue
+    }
+
+    serializedPairs.push(`${normalizedKey}=${String(value).trim()}`)
+  }
+
+  return serializedPairs.length > 0 ? serializedPairs.join(',') : undefined
+}
+
+function mergeConfigKeyPairs(
+  fileRaw: unknown,
+  envRaw: string | undefined,
+  label: string,
+  warnings: string[],
+): Readonly<Record<string, string>> {
+  const filePairs = parseOtelKeyPairs(serializeConfigKeyPairs(fileRaw, label, warnings))
+  const envPairs = parseOtelKeyPairs(envRaw)
+
+  return Object.freeze({
+    ...filePairs,
+    ...envPairs,
+  })
+}
+
+function getNumericConfigValue(value: unknown): string | number | undefined {
+  if (typeof value === 'string' || typeof value === 'number') return value
+  return undefined
 }
 
 function resolveEnvPlaceholders(obj: unknown): unknown {
@@ -87,14 +149,16 @@ function resolveEnvPlaceholders(obj: unknown): unknown {
 }
 
 async function readConfigFile(warnings: string[]): Promise<Record<string, unknown> | null> {
+  const configFilePath = getConfigFilePath()
+
   try {
-    const file = Bun.file(CONFIG_FILE_PATH)
+    const file = Bun.file(configFilePath)
     if (await file.exists()) {
       const parsed: unknown = await file.json()
       if (typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed)) {
         return resolveEnvPlaceholders(parsed) as Record<string, unknown>
       }
-      warnings.push(`Invalid config file at ${CONFIG_FILE_PATH}: not a JSON object`)
+      warnings.push(`Invalid config file at ${configFilePath}: not a JSON object`)
     }
   } catch (err) {
     warnings.push(`Failed to read config file: ${err instanceof Error ? err.message : String(err)}`)
@@ -187,20 +251,30 @@ export async function loadConfig(): Promise<ConfigResult> {
 
   const timeoutMs = parsePositiveInteger(
     process.env['OTEL_EXPORTER_OTLP_TIMEOUT'] ??
-      (typeof fileConfig?.timeoutMs === 'number' ? fileConfig.timeoutMs : undefined),
+      getNumericConfigValue(fileConfig?.timeoutMs),
     'OTEL_EXPORTER_OTLP_TIMEOUT',
     warnings,
   )
 
   const { value: serviceName, source: serviceNameSource } = getServiceName(fileConfig)
-  const explicitResourceAttributes = parseOtelKeyPairs(process.env['OTEL_RESOURCE_ATTRIBUTES'])
+  const explicitResourceAttributes = mergeConfigKeyPairs(
+    fileConfig?.resourceAttributes ?? fileConfig?.explicitResourceAttributes,
+    process.env['OTEL_RESOURCE_ATTRIBUTES'],
+    'otel.json resourceAttributes',
+    warnings,
+  )
 
   const rawHeaders = process.env['OTEL_EXPORTER_OTLP_HEADERS']
-  const headers = parseOtelKeyPairs(rawHeaders)
+  const headers = mergeConfigKeyPairs(
+    fileConfig?.headers,
+    rawHeaders,
+    'otel.json headers',
+    warnings,
+  )
 
   const envMaxLineLength = parsePositiveInteger(
     process.env['OTEL_MAX_LINE_LENGTH'] ??
-      (typeof fileConfig?.maxLineLength === 'number' ? fileConfig.maxLineLength : undefined),
+      getNumericConfigValue(fileConfig?.maxLineLength),
     'OTEL_MAX_LINE_LENGTH',
     warnings,
   )
