@@ -5,20 +5,41 @@
  *   OTEL_EXPORTER_OTLP_LOGS_ENDPOINT
  *   OTEL_EXPORTER_OTLP_LOGS_PROTOCOL (default: "grpc")
  *   OTEL_EXPORTER_OTLP_TRACES_ENDPOINT (optional, for session correlation)
+ *   OTEL_EXPORTER_OTLP_TRACES_PROTOCOL (validated, gRPC only)
+ *   OTEL_EXPORTER_OTLP_TIMEOUT (optional, shared timeout in ms)
  *   OTEL_SERVICE_NAME (default: "opencode-agent")
+ *   OTEL_RESOURCE_ATTRIBUTES
  *   OTEL_EXPORTER_OTLP_HEADERS
  */
 
-import { homedir } from 'node:os'
+import { homedir, hostname } from 'node:os'
 import { join } from 'node:path'
+import { parseKeyPairsIntoRecord } from '@opentelemetry/core'
 
 export type OtelProtocol = 'grpc' | 'http/json'
+export type IdentitySource = 'env' | 'config-file' | 'default'
+
+export interface BatRuntimeMetadata {
+  readonly appId: string | undefined
+  readonly groupId: string | undefined
+  readonly idc: string | undefined
+  readonly buCode: string | undefined
+  readonly availabilityZone: string | undefined
+  readonly region: string | undefined
+  readonly hostIp: string | undefined
+  readonly hostName: string | undefined
+}
 
 export interface OtelConfig {
   readonly logsEndpoint: string | undefined
   readonly logsProtocol: OtelProtocol
   readonly tracesEndpoint: string | undefined
+  readonly tracesProtocol: 'grpc'
+  readonly timeoutMs: number | undefined
   readonly serviceName: string
+  readonly serviceNameSource: IdentitySource
+  readonly explicitResourceAttributes: Readonly<Record<string, string>>
+  readonly runtimeMetadata: BatRuntimeMetadata
   readonly headers: Readonly<Record<string, string>>
   readonly maxLineLength: number
 }
@@ -29,6 +50,7 @@ export interface ConfigResult {
 }
 
 const DEFAULT_PROTOCOL: OtelProtocol = 'grpc'
+const DEFAULT_TRACE_PROTOCOL = 'grpc'
 const DEFAULT_SERVICE_NAME = 'opencode-agent'
 const DEFAULT_MAX_LINE_LENGTH = 4096
 const VALID_PROTOCOLS = new Set<string>(['grpc', 'http/json'])
@@ -39,17 +61,9 @@ function toOptionalString(value: unknown): string | undefined {
   return undefined
 }
 
-function parseHeaders(raw: string): Record<string, string> {
-  if (raw.trim() === '') return {}
-  const result: Record<string, string> = {}
-  for (const pair of raw.split(',')) {
-    const eq = pair.indexOf('=')
-    if (eq === -1) continue
-    const key = pair.slice(0, eq).trim()
-    const value = pair.slice(eq + 1).trim()
-    if (key) result[key] = value
-  }
-  return Object.freeze(result)
+function parseOtelKeyPairs(raw: string | undefined): Readonly<Record<string, string>> {
+  if (!raw || raw.trim() === '') return Object.freeze({})
+  return Object.freeze(parseKeyPairsIntoRecord(raw))
 }
 
 function resolveEnvPlaceholders(obj: unknown): unknown {
@@ -88,6 +102,56 @@ async function readConfigFile(warnings: string[]): Promise<Record<string, unknow
   return null
 }
 
+function parsePositiveInteger(
+  raw: string | number | undefined,
+  label: string,
+  warnings: string[],
+): number | undefined {
+  if (raw === undefined) return undefined
+  const numeric = typeof raw === 'number' ? raw : Number(raw)
+  if (Number.isInteger(numeric) && numeric > 0) return numeric
+  warnings.push(`${label} must be a positive integer — ignoring "${String(raw)}"`)
+  return undefined
+}
+
+function getServiceName(fileConfig: Record<string, unknown> | null): {
+  value: string
+  source: IdentitySource
+} {
+  const envValue = toOptionalString(process.env['OTEL_SERVICE_NAME'])
+  if (envValue) {
+    return { value: envValue, source: 'env' }
+  }
+
+  const fileValue = toOptionalString(fileConfig?.serviceName)
+  if (fileValue) {
+    return { value: fileValue, source: 'config-file' }
+  }
+
+  return { value: DEFAULT_SERVICE_NAME, source: 'default' }
+}
+
+function getRuntimeMetadata(): BatRuntimeMetadata {
+  const hostName = toOptionalString(process.env['HOSTNAME']) ?? (() => {
+    try {
+      return hostname()
+    } catch {
+      return undefined
+    }
+  })()
+
+  return Object.freeze({
+    appId: toOptionalString(process.env['PAAS_APP_APPID']),
+    groupId: toOptionalString(process.env['PAAS_APP_GROUPID']),
+    idc: toOptionalString(process.env['CDOS_IDC']),
+    buCode: toOptionalString(process.env['CDOS_BUCODE']),
+    availabilityZone: toOptionalString(process.env['CDOS_AZ']),
+    region: toOptionalString(process.env['CDOS_REGION']),
+    hostIp: toOptionalString(process.env['CDOS_POD_IP']),
+    hostName,
+  })
+}
+
 export async function loadConfig(): Promise<ConfigResult> {
   const warnings: string[] = []
   const fileConfig = await readConfigFile(warnings)
@@ -96,49 +160,66 @@ export async function loadConfig(): Promise<ConfigResult> {
     toOptionalString(process.env['OTEL_EXPORTER_OTLP_LOGS_ENDPOINT']) ??
     toOptionalString(fileConfig?.logsEndpoint)
 
-  const tracesEndpoint =
+  let tracesEndpoint =
     toOptionalString(process.env['OTEL_EXPORTER_OTLP_TRACES_ENDPOINT']) ??
     toOptionalString(fileConfig?.tracesEndpoint)
 
-  const rawProtocol =
+  const rawLogsProtocol =
     toOptionalString(process.env['OTEL_EXPORTER_OTLP_LOGS_PROTOCOL']) ??
     toOptionalString(fileConfig?.logsProtocol)
   let logsProtocol: OtelProtocol = DEFAULT_PROTOCOL
-  if (rawProtocol) {
-    const normalized = rawProtocol.toLowerCase().trim()
+  if (rawLogsProtocol) {
+    const normalized = rawLogsProtocol.toLowerCase().trim()
     if (VALID_PROTOCOLS.has(normalized)) {
       logsProtocol = normalized as OtelProtocol
     } else {
-      warnings.push(`Unrecognized logs protocol "${rawProtocol}" — using "${DEFAULT_PROTOCOL}"`)
+      warnings.push(`Unrecognized logs protocol "${rawLogsProtocol}" — using "${DEFAULT_PROTOCOL}"`)
     }
   }
 
-  const serviceName =
-    toOptionalString(process.env['OTEL_SERVICE_NAME']) ??
-    toOptionalString(fileConfig?.serviceName as string | undefined) ??
-    DEFAULT_SERVICE_NAME
+  const rawTracesProtocol =
+    toOptionalString(process.env['OTEL_EXPORTER_OTLP_TRACES_PROTOCOL']) ??
+    toOptionalString(fileConfig?.tracesProtocol)
+  if (rawTracesProtocol && rawTracesProtocol.toLowerCase().trim() !== DEFAULT_TRACE_PROTOCOL) {
+    warnings.push(`Trace exporter only supports "${DEFAULT_TRACE_PROTOCOL}" — disabling trace export`)
+    tracesEndpoint = undefined
+  }
 
-  const rawHeaders = process.env['OTEL_EXPORTER_OTLP_HEADERS']
-  const headers: Readonly<Record<string, string>> = rawHeaders
-    ? parseHeaders(rawHeaders)
-    : Object.freeze({})
-
-  const envMaxLineLengthStr = process.env['OTEL_MAX_LINE_LENGTH']
-  const envMaxLineLengthNum = envMaxLineLengthStr !== undefined && envMaxLineLengthStr.trim() !== ''
-    ? Number(envMaxLineLengthStr)
-    : undefined
-  const candidates = [
-    envMaxLineLengthNum,
-    typeof fileConfig?.maxLineLength === 'number' ? fileConfig.maxLineLength : undefined,
-    DEFAULT_MAX_LINE_LENGTH,
-  ]
-  const maxLineLength = Math.floor(
-    candidates.find((v): v is number => v !== undefined && Number.isFinite(v) && v >= 1)
-    ?? DEFAULT_MAX_LINE_LENGTH,
+  const timeoutMs = parsePositiveInteger(
+    process.env['OTEL_EXPORTER_OTLP_TIMEOUT'] ??
+      (typeof fileConfig?.timeoutMs === 'number' ? fileConfig.timeoutMs : undefined),
+    'OTEL_EXPORTER_OTLP_TIMEOUT',
+    warnings,
   )
 
+  const { value: serviceName, source: serviceNameSource } = getServiceName(fileConfig)
+  const explicitResourceAttributes = parseOtelKeyPairs(process.env['OTEL_RESOURCE_ATTRIBUTES'])
+
+  const rawHeaders = process.env['OTEL_EXPORTER_OTLP_HEADERS']
+  const headers = parseOtelKeyPairs(rawHeaders)
+
+  const envMaxLineLength = parsePositiveInteger(
+    process.env['OTEL_MAX_LINE_LENGTH'] ??
+      (typeof fileConfig?.maxLineLength === 'number' ? fileConfig.maxLineLength : undefined),
+    'OTEL_MAX_LINE_LENGTH',
+    warnings,
+  )
+  const maxLineLength = envMaxLineLength ?? DEFAULT_MAX_LINE_LENGTH
+
   return {
-    config: Object.freeze({ logsEndpoint, logsProtocol, tracesEndpoint, serviceName, headers, maxLineLength }),
+    config: Object.freeze({
+      logsEndpoint,
+      logsProtocol,
+      tracesEndpoint,
+      tracesProtocol: DEFAULT_TRACE_PROTOCOL,
+      timeoutMs,
+      serviceName,
+      serviceNameSource,
+      explicitResourceAttributes,
+      runtimeMetadata: getRuntimeMetadata(),
+      headers,
+      maxLineLength,
+    }),
     warnings,
   }
 }

@@ -1,60 +1,153 @@
-import { describe, test, expect } from 'bun:test'
+import { afterEach, describe, expect, test } from 'bun:test'
 import { loadConfig } from '../../src/config.ts'
 
-describe('loadConfig', () => {
-  test('returns defaults when no env vars set', async () => {
-    const saved = { ...process.env }
-    delete process.env['OTEL_EXPORTER_OTLP_LOGS_ENDPOINT']
-    delete process.env['OTEL_EXPORTER_OTLP_LOGS_PROTOCOL']
-    delete process.env['OTEL_SERVICE_NAME']
-    delete process.env['OTEL_EXPORTER_OTLP_HEADERS']
+const ENV_KEYS = [
+  'OTEL_EXPORTER_OTLP_LOGS_ENDPOINT',
+  'OTEL_EXPORTER_OTLP_LOGS_PROTOCOL',
+  'OTEL_EXPORTER_OTLP_TRACES_ENDPOINT',
+  'OTEL_EXPORTER_OTLP_TRACES_PROTOCOL',
+  'OTEL_EXPORTER_OTLP_TIMEOUT',
+  'OTEL_SERVICE_NAME',
+  'OTEL_EXPORTER_OTLP_HEADERS',
+  'OTEL_RESOURCE_ATTRIBUTES',
+  'OTEL_LOGS_EXPORTER',
+  'OTEL_TRACES_EXPORTER',
+  'OTEL_METRICS_EXPORTER',
+  'OTEL_EXPORTER_OTLP_METRICS_ENDPOINT',
+  'OTEL_EXPORTER_OTLP_METRICS_PROTOCOL',
+  'PAAS_APP_APPID',
+  'PAAS_APP_GROUPID',
+  'CDOS_IDC',
+  'CDOS_BUCODE',
+  'CDOS_AZ',
+  'CDOS_REGION',
+  'CDOS_POD_IP',
+  'HOSTNAME',
+] as const
 
-    const { config } = await loadConfig()
+const ORIGINAL_ENV = new Map<string, string | undefined>(
+  ENV_KEYS.map((key) => [key, process.env[key]]),
+)
+
+afterEach(() => {
+  for (const key of ENV_KEYS) {
+    const value = ORIGINAL_ENV.get(key)
+    if (value === undefined) delete process.env[key]
+    else process.env[key] = value
+  }
+})
+
+describe('loadConfig', () => {
+  test('returns defaults when no OTEL env vars are set', async () => {
+    for (const key of ENV_KEYS) delete process.env[key]
+
+    const { config, warnings } = await loadConfig()
 
     expect(config.logsEndpoint).toBeUndefined()
     expect(config.logsProtocol).toBe('grpc')
+    expect(config.tracesEndpoint).toBeUndefined()
+    expect(config.tracesProtocol).toBe('grpc')
+    expect(config.timeoutMs).toBeUndefined()
     expect(config.serviceName).toBe('opencode-agent')
+    expect(config.serviceNameSource).toBe('default')
+    expect(config.explicitResourceAttributes).toEqual({})
+    expect(config.headers).toEqual({})
     expect(config.maxLineLength).toBe(4096)
-
-    Object.assign(process.env, saved)
+    expect(config.runtimeMetadata.hostName).toBeDefined()
+    expect(warnings).toEqual([])
+    expect(Object.isFrozen(config)).toBe(true)
   })
 
-  test('reads endpoint from env var', async () => {
-    const saved = process.env['OTEL_EXPORTER_OTLP_LOGS_ENDPOINT']
-    process.env['OTEL_EXPORTER_OTLP_LOGS_ENDPOINT'] = 'http://collector:8080'
-
-    const { config } = await loadConfig()
-    expect(config.logsEndpoint).toBe('http://collector:8080')
-
-    if (saved) process.env['OTEL_EXPORTER_OTLP_LOGS_ENDPOINT'] = saved
-    else delete process.env['OTEL_EXPORTER_OTLP_LOGS_ENDPOINT']
-  })
-
-  test('reads protocol from env var', async () => {
-    const saved = process.env['OTEL_EXPORTER_OTLP_LOGS_PROTOCOL']
-    process.env['OTEL_EXPORTER_OTLP_LOGS_PROTOCOL'] = 'http/json'
-
-    const { config } = await loadConfig()
-    expect(config.logsProtocol).toBe('http/json')
-
-    if (saved) process.env['OTEL_EXPORTER_OTLP_LOGS_PROTOCOL'] = saved
-    else delete process.env['OTEL_EXPORTER_OTLP_LOGS_PROTOCOL']
-  })
-
-  test('warns on invalid protocol and uses default', async () => {
-    const saved = process.env['OTEL_EXPORTER_OTLP_LOGS_PROTOCOL']
-    process.env['OTEL_EXPORTER_OTLP_LOGS_PROTOCOL'] = 'invalid'
+  test('parses BAT endpoints, timeout, headers, explicit attrs, and runtime metadata', async () => {
+    process.env['OTEL_EXPORTER_OTLP_LOGS_ENDPOINT'] = 'http://triplog-otel-collector.fws.qa.nt.ctripcorp.com:8080'
+    process.env['OTEL_EXPORTER_OTLP_LOGS_PROTOCOL'] = 'grpc'
+    process.env['OTEL_EXPORTER_OTLP_TRACES_ENDPOINT'] = 'http://bat-otel-collector.fws.qa.nt.ctripcorp.com:8080'
+    process.env['OTEL_EXPORTER_OTLP_TRACES_PROTOCOL'] = 'grpc'
+    process.env['OTEL_EXPORTER_OTLP_TIMEOUT'] = '2000'
+    process.env['OTEL_SERVICE_NAME'] = 'pay-dev-agent'
+    process.env['OTEL_EXPORTER_OTLP_HEADERS'] = 'authorization=Bearer token,x-tenant=payment'
+    process.env['OTEL_RESOURCE_ATTRIBUTES'] = 'service.name=100059443,group.id=71236405,idc=NTGXH,custom.attr=custom'
+    process.env['PAAS_APP_APPID'] = '100059443'
+    process.env['PAAS_APP_GROUPID'] = '71236405'
+    process.env['CDOS_IDC'] = 'NTGXH'
+    process.env['CDOS_BUCODE'] = 'BBZ'
+    process.env['CDOS_AZ'] = 'NTGXH-AZ1'
+    process.env['CDOS_REGION'] = 'NT'
+    process.env['CDOS_POD_IP'] = '10.1.2.3'
+    process.env['HOSTNAME'] = 'pod-001'
 
     const { config, warnings } = await loadConfig()
-    expect(config.logsProtocol).toBe('grpc')
-    expect(warnings.length).toBeGreaterThan(0)
 
-    if (saved) process.env['OTEL_EXPORTER_OTLP_LOGS_PROTOCOL'] = saved
-    else delete process.env['OTEL_EXPORTER_OTLP_LOGS_PROTOCOL']
+    expect(config.logsEndpoint).toBe('http://triplog-otel-collector.fws.qa.nt.ctripcorp.com:8080')
+    expect(config.tracesEndpoint).toBe('http://bat-otel-collector.fws.qa.nt.ctripcorp.com:8080')
+    expect(config.timeoutMs).toBe(2000)
+    expect(config.serviceName).toBe('pay-dev-agent')
+    expect(config.serviceNameSource).toBe('env')
+    expect(config.headers).toEqual({
+      authorization: 'Bearer token',
+      'x-tenant': 'payment',
+    })
+    expect(config.explicitResourceAttributes).toEqual({
+      'service.name': '100059443',
+      'group.id': '71236405',
+      idc: 'NTGXH',
+      'custom.attr': 'custom',
+    })
+    expect(config.runtimeMetadata).toEqual({
+      appId: '100059443',
+      groupId: '71236405',
+      idc: 'NTGXH',
+      buCode: 'BBZ',
+      availabilityZone: 'NTGXH-AZ1',
+      region: 'NT',
+      hostIp: '10.1.2.3',
+      hostName: 'pod-001',
+    })
+    expect(warnings).toEqual([])
   })
 
-  test('config is frozen (immutable)', async () => {
+  test('warns and disables traces when traces protocol is unsupported', async () => {
+    process.env['OTEL_EXPORTER_OTLP_LOGS_ENDPOINT'] = 'http://collector:8080'
+    process.env['OTEL_EXPORTER_OTLP_TRACES_ENDPOINT'] = 'http://trace-collector:8080'
+    process.env['OTEL_EXPORTER_OTLP_TRACES_PROTOCOL'] = 'http/json'
+
+    const { config, warnings } = await loadConfig()
+
+    expect(config.logsEndpoint).toBe('http://collector:8080')
+    expect(config.tracesEndpoint).toBeUndefined()
+    expect(config.tracesProtocol).toBe('grpc')
+    expect(warnings.some((warning) => warning.includes('Trace exporter only supports "grpc"'))).toBe(true)
+  })
+
+  test('tolerates shared exporter and metrics env vars without changing routing', async () => {
+    process.env['OTEL_EXPORTER_OTLP_LOGS_ENDPOINT'] = 'http://collector:8080'
+    process.env['OTEL_LOGS_EXPORTER'] = 'otlp'
+    process.env['OTEL_TRACES_EXPORTER'] = 'otlp'
+    process.env['OTEL_METRICS_EXPORTER'] = 'otlp'
+    process.env['OTEL_EXPORTER_OTLP_METRICS_ENDPOINT'] = 'http://metrics:8080'
+    process.env['OTEL_EXPORTER_OTLP_METRICS_PROTOCOL'] = 'grpc'
+
+    const { config, warnings } = await loadConfig()
+
+    expect(config.logsEndpoint).toBe('http://collector:8080')
+    expect(config.tracesEndpoint).toBeUndefined()
+    expect(warnings).toEqual([])
+  })
+
+  test('decodes percent-encoded OTEL headers and resource attributes', async () => {
+    process.env['OTEL_EXPORTER_OTLP_HEADERS'] = 'authorization=Bearer%20token,scope=read%2Cwrite'
+    process.env['OTEL_RESOURCE_ATTRIBUTES'] = 'service.name=svc%2Fapi,custom.attr=hello%20world,scope=read%2Cwrite'
+
     const { config } = await loadConfig()
-    expect(Object.isFrozen(config)).toBe(true)
+
+    expect(config.headers).toEqual({
+      authorization: 'Bearer token',
+      scope: 'read,write',
+    })
+    expect(config.explicitResourceAttributes).toEqual({
+      'service.name': 'svc/api',
+      'custom.attr': 'hello world',
+      scope: 'read,write',
+    })
   })
 })

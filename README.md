@@ -2,23 +2,28 @@
 
 [![npm](https://img.shields.io/npm/v/opencode-otel)](https://www.npmjs.com/package/opencode-otel)
 
-[OpenCode](https://opencode.ai) plugin — forwards runtime stderr logs to any OTLP-compatible log collector via gRPC or HTTP.
+[OpenCode](https://opencode.ai) plugin that forwards runtime stderr logs to any OTLP-compatible collector via gRPC or HTTP.
 
-Business-level observability (session traces, message spans, tool calls) is handled separately by [opencode-plugin-langfuse](https://github.com/NeverMore93/opencode-plugin-langfuse). This plugin focuses exclusively on **runtime log shipping**.
+For BAT deployments, the plugin follows the same OpenTelemetry environment-variable contract injected by Captain:
+- logs route to `triplog-otel-collector`
+- optional session-correlation traces route to `bat-otel-collector`
+- metrics remain outside this plugin and are ignored safely
+
+Business-level observability (session traces, message spans, tool calls) is still handled by [opencode-plugin-langfuse](https://github.com/NeverMore93/opencode-plugin-langfuse). This plugin focuses on runtime log shipping and log-to-session correlation only.
 
 ## How It Works
 
-The plugin monkey-patches `process.stderr.write` at initialization to intercept all runtime log output. Each complete log line is:
+The plugin monkey-patches `process.stderr.write` at initialization. Each complete stderr line is:
 
-1. Parsed for severity (ERROR/WARN/INFO/DEBUG prefix)
-2. Converted to an OTEL LogRecord
-3. Batched and exported to the configured OTLP log collector
+1. parsed for severity (`ERROR`, `WARN`, `INFO`, `DEBUG`)
+2. emitted as an OTEL `LogRecord`
+3. batched to the configured OTLP log exporter
 
-The original stderr output is always preserved — the interception is fully transparent.
+Original stderr output is preserved exactly as-is.
 
 ## Quick Start
 
-### 1. Configure OpenCode
+### 1. Enable the plugin in OpenCode
 
 Add to `~/.config/opencode/opencode.json`:
 
@@ -28,7 +33,9 @@ Add to `~/.config/opencode/opencode.json`:
 }
 ```
 
-### 2. Set Log Endpoint
+### 2. Set OTLP routing
+
+Generic OTLP example:
 
 ```bash
 export OTEL_EXPORTER_OTLP_LOGS_ENDPOINT=http://your-collector:8080
@@ -41,32 +48,96 @@ export OTEL_EXPORTER_OTLP_LOGS_PROTOCOL=grpc
 opencode
 ```
 
-All runtime logs are now forwarded to your collector.
+## BAT / Captain Example
+
+The plugin accepts the BAT endpoint format verbatim: `http://host:8080` with protocol declared separately as `grpc`.
+
+```bash
+export OTEL_EXPORTER_OTLP_TRACES_ENDPOINT=http://bat-otel-collector.fws.qa.nt.ctripcorp.com:8080
+export OTEL_EXPORTER_OTLP_TRACES_PROTOCOL=grpc
+export OTEL_EXPORTER_OTLP_LOGS_ENDPOINT=http://triplog-otel-collector.fws.qa.nt.ctripcorp.com:8080
+export OTEL_EXPORTER_OTLP_LOGS_PROTOCOL=grpc
+export OTEL_EXPORTER_OTLP_TIMEOUT=2000
+export OTEL_TRACES_EXPORTER=otlp
+export OTEL_LOGS_EXPORTER=otlp
+export OTEL_METRICS_EXPORTER=otlp
+export OTEL_EXPORTER_OTLP_METRICS_ENDPOINT=http://otel.hickwall.sys.qa.nt.ctripcorp.com:8080
+export OTEL_EXPORTER_OTLP_METRICS_PROTOCOL=grpc
+export OTEL_RESOURCE_ATTRIBUTES=service.name=100059443,group.id=71236405,idc=NTGXH,bu.code=BBZ,cloud.availability_zone=NTGXH-AZ1,cloud.region=NT,host.ip=10.1.2.3,host.name=pod-001
+export OTEL_SERVICE_NAME=pay-dev-agent
+```
+
+Notes:
+- `OTEL_RESOURCE_ATTRIBUTES.service.name` wins over `OTEL_SERVICE_NAME`
+- missing BAT identity keys are backfilled from runtime metadata when available
+- metrics exporter env vars are tolerated but ignored by this plugin
+
+## Signal Routing
+
+| Signal | Source | Route | Required |
+|--------|--------|-------|----------|
+| Logs | `OTEL_EXPORTER_OTLP_LOGS_*` | TripLog / generic OTLP collector | Yes |
+| Traces | `OTEL_EXPORTER_OTLP_TRACES_*` | BAT trace collector / generic OTLP trace collector | No |
+| Metrics | shared Captain OTEL template | ignored by this plugin | No |
+
+If no logs endpoint is configured, the plugin remains inactive and does not install the stderr interceptor.
+
+## Service Identity Precedence
+
+`service.name` is resolved in this order:
+
+1. `service.name` inside `OTEL_RESOURCE_ATTRIBUTES`
+2. `OTEL_SERVICE_NAME`
+3. `serviceName` in the optional `otel.json`
+4. `PAAS_APP_APPID`
+5. built-in default `opencode-agent`
+
+Other BAT identity fields are resolved as:
+
+| Resource attribute | Primary source | Runtime fallback |
+|--------------------|----------------|------------------|
+| `group.id` | `OTEL_RESOURCE_ATTRIBUTES` | `PAAS_APP_GROUPID` |
+| `idc` | `OTEL_RESOURCE_ATTRIBUTES` | `CDOS_IDC` |
+| `bu.code` | `OTEL_RESOURCE_ATTRIBUTES` | `CDOS_BUCODE` |
+| `cloud.availability_zone` | `OTEL_RESOURCE_ATTRIBUTES` | `CDOS_AZ` |
+| `cloud.region` | `OTEL_RESOURCE_ATTRIBUTES` | `CDOS_REGION` |
+| `host.ip` | `OTEL_RESOURCE_ATTRIBUTES` | `CDOS_POD_IP` |
+| `host.name` | `OTEL_RESOURCE_ATTRIBUTES` | `HOSTNAME` or OS hostname |
+
+When inputs disagree, the higher-priority source wins and the plugin emits a startup warning through the OpenCode app logger.
 
 ## Configuration
 
 | Env Variable | Required | Default | Description |
 |-------------|:--------:|---------|-------------|
-| `OTEL_EXPORTER_OTLP_LOGS_ENDPOINT` | **Yes** | — | OTLP log collector endpoint |
-| `OTEL_EXPORTER_OTLP_LOGS_PROTOCOL` | No | `grpc` | Protocol: `grpc` or `http/json` |
-| `OTEL_SERVICE_NAME` | No | `opencode-agent` | `service.name` resource attribute |
+| `OTEL_EXPORTER_OTLP_LOGS_ENDPOINT` | **Yes** | — | OTLP logs endpoint |
+| `OTEL_EXPORTER_OTLP_LOGS_PROTOCOL` | No | `grpc` | Logs protocol: `grpc` or `http/json` |
+| `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` | No | — | Optional session-correlation trace endpoint |
+| `OTEL_EXPORTER_OTLP_TRACES_PROTOCOL` | No | `grpc` | Trace protocol; only `grpc` is supported |
+| `OTEL_EXPORTER_OTLP_TIMEOUT` | No | SDK default | Shared OTLP timeout in milliseconds |
+| `OTEL_SERVICE_NAME` | No | `opencode-agent` | Secondary service-name input |
+| `OTEL_RESOURCE_ATTRIBUTES` | No | — | Explicit resource attributes and BAT identity source |
 | `OTEL_EXPORTER_OTLP_HEADERS` | No | — | Comma-separated `key=value` auth headers |
-| `OTEL_RESOURCE_ATTRIBUTES` | No | — | Additional resource attributes (auto-parsed) |
+| `OTEL_METRICS_EXPORTER` | No | ignored | Accepted for shared templates; not used |
+| `OTEL_EXPORTER_OTLP_METRICS_ENDPOINT` | No | ignored | Accepted for shared templates; not used |
+| `OTEL_EXPORTER_OTLP_METRICS_PROTOCOL` | No | ignored | Accepted for shared templates; not used |
 
-### Config File (optional)
+### Optional Config File
 
 Create `~/.config/opencode/plugins/otel.json`:
 
 ```json
 {
-  "logsEndpoint": "http://your-collector:8080",
+  "logsEndpoint": "http://triplog-otel-collector.fws.qa.nt.ctripcorp.com:8080",
   "logsProtocol": "grpc",
+  "tracesEndpoint": "http://bat-otel-collector.fws.qa.nt.ctripcorp.com:8080",
   "serviceName": "opencode-agent",
+  "timeoutMs": 2000,
   "maxLineLength": 4096
 }
 ```
 
-Environment variables take precedence over config file values.
+Environment variables take precedence over the config file.
 
 ## Log Severity Mapping
 
@@ -78,22 +149,12 @@ Environment variables take precedence over config file values.
 | `DEBUG` | DEBUG (5) |
 | Other | UNSPECIFIED (0) |
 
-## Features
-
-- **Transparent interception** — stderr output preserved exactly as-is
-- **gRPC + HTTP** — dual protocol support for any OTLP-compatible collector
-- **Severity parsing** — automatic log level detection from line prefix
-- **Line buffering** — handles partial writes correctly
-- **Fire-and-forget** — zero latency impact on stderr writes
-- **Graceful shutdown** — flushes pending records on process exit
-- **Resource attributes** — auto-reads `OTEL_RESOURCE_ATTRIBUTES` for metadata
-
 ## Development
 
 ```bash
-bun install             # Install dependencies
-bun test                # Run tests
-bun run build           # ESM bundle → dist/
+bun install
+bun test
+bun run build
 ```
 
 ## License
