@@ -1,6 +1,8 @@
 {
-  "logsEndpoint": "http://your-otel-collector:8080",
+  "logsEndpoint": "http://triplog-otel-collector.fws.qa.nt.ctripcorp.com:8080",
   "logsProtocol": "grpc",
+  "tracesEndpoint": "http://bat-otel-collector.fws.qa.nt.ctripcorp.com:8080",
   "serviceName": "opencode-agent",
+  "timeoutMs": 2000,
   "maxLineLength": 4096
 }

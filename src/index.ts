@@ -25,6 +25,15 @@ interface PluginContext {
   }
 }
 
+function safeHost(endpoint: string | undefined): string {
+  if (!endpoint) return 'unknown'
+  try {
+    return new URL(endpoint).host
+  } catch {
+    return '(endpoint configured)'
+  }
+}
+
 export default async function plugin(ctx: PluginContext) {
   const log = (level: 'info' | 'error') => async (message: string) => {
     try {
@@ -43,7 +52,7 @@ export default async function plugin(ctx: PluginContext) {
     const { config, warnings } = await loadConfig()
 
     for (const w of warnings) {
-      await logError(w)
+      await logInfo(`Warning: ${w}`)
     }
 
     if (!config.logsEndpoint) {
@@ -51,7 +60,18 @@ export default async function plugin(ctx: PluginContext) {
       return {}
     }
 
-    const { loggerProvider, tracerProvider, logger, tracer } = initProviders(config)
+    const {
+      loggerProvider,
+      tracerProvider,
+      logger,
+      tracer,
+      warnings: providerWarnings,
+      routes,
+    } = initProviders(config)
+
+    for (const warning of providerWarnings) {
+      await logInfo(`Warning: ${warning}`)
+    }
 
     // Install stderr interceptor — emit log records with trace context
     const interceptor = install((parsed: ParsedLine) => {
@@ -66,14 +86,14 @@ export default async function plugin(ctx: PluginContext) {
 
     registerShutdown(loggerProvider, tracerProvider, interceptor, (msg) => void logError(msg))
 
-    let safeEndpoint: string
-    try {
-      safeEndpoint = config.logsEndpoint ? new URL(config.logsEndpoint).host : 'unknown'
-    } catch {
-      safeEndpoint = '(endpoint configured)'
-    }
+    const safeEndpoint = safeHost(config.logsEndpoint)
+
+    const traceStatus = routes.traces.enabled && routes.traces.endpoint
+      ? `; session traces enabled via ${safeHost(routes.traces.endpoint)}`
+      : '; session traces disabled'
+
     await logInfo(
-      `Initialized — forwarding stderr logs via ${config.logsProtocol} to ${safeEndpoint}`,
+      `Initialized — forwarding stderr logs via ${routes.logs.protocol} to ${safeEndpoint}${traceStatus}`,
     )
 
     // Event hook: track session lifecycle for trace context correlation
