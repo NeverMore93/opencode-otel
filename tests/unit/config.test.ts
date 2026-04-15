@@ -10,6 +10,8 @@ const ENV_KEYS = [
   'OTEL_EXPORTER_OTLP_TRACES_ENDPOINT',
   'OTEL_EXPORTER_OTLP_TRACES_PROTOCOL',
   'OTEL_EXPORTER_OTLP_TIMEOUT',
+  'OTEL_EXPORTER_OTLP_LOGS_TIMEOUT',
+  'OTEL_EXPORTER_OTLP_TRACES_TIMEOUT',
   'OTEL_SERVICE_NAME',
   'OTEL_EXPORTER_OTLP_HEADERS',
   'OTEL_RESOURCE_ATTRIBUTES',
@@ -76,7 +78,8 @@ describe('loadConfig', () => {
     expect(config.logsProtocol).toBe('grpc')
     expect(config.tracesEndpoint).toBeUndefined()
     expect(config.tracesProtocol).toBe('grpc')
-    expect(config.timeoutMs).toBeUndefined()
+    expect(config.logsTimeoutMs).toBeUndefined()
+    expect(config.tracesTimeoutMs).toBeUndefined()
     expect(config.serviceName).toBe('opencode-agent')
     expect(config.serviceNameSource).toBe('default')
     expect(config.explicitResourceAttributes).toEqual({})
@@ -130,7 +133,8 @@ describe('loadConfig', () => {
 
     const { config, warnings } = await loadConfig()
 
-    expect(config.timeoutMs).toBe(2500)
+    expect(config.logsTimeoutMs).toBe(2500)
+    expect(config.tracesTimeoutMs).toBe(2500)
     expect(config.maxLineLength).toBe(8192)
     expect(warnings).toEqual([])
   })
@@ -157,7 +161,8 @@ describe('loadConfig', () => {
 
     expect(config.logsEndpoint).toBe('http://triplog-otel-collector.fws.qa.nt.ctripcorp.com:8080')
     expect(config.tracesEndpoint).toBe('http://bat-otel-collector.fws.qa.nt.ctripcorp.com:8080')
-    expect(config.timeoutMs).toBe(2000)
+    expect(config.logsTimeoutMs).toBe(2000)
+    expect(config.tracesTimeoutMs).toBe(2000)
     expect(config.serviceName).toBe('pay-dev-agent')
     expect(config.serviceNameSource).toBe('env')
     expect(config.headers).toEqual({
@@ -181,6 +186,32 @@ describe('loadConfig', () => {
       hostName: 'pod-001',
     })
     expect(warnings).toEqual([])
+  })
+
+  test('signal-specific timeouts override generic OTEL_EXPORTER_OTLP_TIMEOUT per OTEL spec', async () => {
+    process.env['OTEL_EXPORTER_OTLP_LOGS_ENDPOINT'] = 'http://collector:8080'
+    process.env['OTEL_EXPORTER_OTLP_TRACES_ENDPOINT'] = 'http://collector:8080'
+    process.env['OTEL_EXPORTER_OTLP_TIMEOUT'] = '1000'
+    process.env['OTEL_EXPORTER_OTLP_LOGS_TIMEOUT'] = '3000'
+    process.env['OTEL_EXPORTER_OTLP_TRACES_TIMEOUT'] = '5000'
+
+    const { config, warnings } = await loadConfig()
+
+    expect(config.logsTimeoutMs).toBe(3000)
+    expect(config.tracesTimeoutMs).toBe(5000)
+    expect(warnings).toEqual([])
+  })
+
+  test('falls back to generic timeout when only one signal-specific timeout is set', async () => {
+    process.env['OTEL_EXPORTER_OTLP_LOGS_ENDPOINT'] = 'http://collector:8080'
+    process.env['OTEL_EXPORTER_OTLP_TRACES_ENDPOINT'] = 'http://collector:8080'
+    process.env['OTEL_EXPORTER_OTLP_TIMEOUT'] = '1500'
+    process.env['OTEL_EXPORTER_OTLP_LOGS_TIMEOUT'] = '4000'
+
+    const { config } = await loadConfig()
+
+    expect(config.logsTimeoutMs).toBe(4000)
+    expect(config.tracesTimeoutMs).toBe(1500)
   })
 
   test('warns and disables traces when traces protocol is unsupported', async () => {

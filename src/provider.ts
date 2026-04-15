@@ -165,9 +165,22 @@ function runtimeCandidates(runtime: BatRuntimeMetadata): AttributeCandidate[] {
 }
 
 function createServiceNameCandidates(config: OtelConfig): AttributeCandidate[] {
+  // OpenTelemetry SDK spec: OTEL_SERVICE_NAME takes precedence over
+  // service.name in OTEL_RESOURCE_ATTRIBUTES.
+  // Precedence: env (OTEL_SERVICE_NAME) > OTEL_RESOURCE_ATTRIBUTES
+  //           > otel.json serviceName > runtime PAAS_APP_APPID > default.
   const explicitServiceName = config.explicitResourceAttributes['service.name']
   const runtimeServiceName = config.runtimeMetadata.appId
   const serviceCandidates: AttributeCandidate[] = []
+
+  if (config.serviceNameSource === 'env') {
+    serviceCandidates.push({
+      attribute: 'service.name',
+      source: 'env',
+      label: getServiceNameLabel('env'),
+      value: config.serviceName,
+    })
+  }
 
   if (explicitServiceName) {
     serviceCandidates.push({
@@ -178,11 +191,11 @@ function createServiceNameCandidates(config: OtelConfig): AttributeCandidate[] {
     })
   }
 
-  if (config.serviceNameSource !== 'default') {
+  if (config.serviceNameSource === 'config-file') {
     serviceCandidates.push({
       attribute: 'service.name',
-      source: config.serviceNameSource,
-      label: getServiceNameLabel(config.serviceNameSource),
+      source: 'config-file',
+      label: getServiceNameLabel('config-file'),
       value: config.serviceName,
     })
   }
@@ -200,7 +213,7 @@ function createServiceNameCandidates(config: OtelConfig): AttributeCandidate[] {
     serviceCandidates.push({
       attribute: 'service.name',
       source: 'default',
-      label: getServiceNameLabel(config.serviceNameSource),
+      label: getServiceNameLabel('default'),
       value: config.serviceName,
     })
   }
@@ -236,14 +249,14 @@ export function resolveSignalRoutes(config: OtelConfig): {
       enabled: config.logsEndpoint !== undefined,
       endpoint: config.logsEndpoint,
       protocol: config.logsProtocol,
-      timeoutMs: config.timeoutMs,
+      timeoutMs: config.logsTimeoutMs,
     }),
     traces: Object.freeze({
       signal: 'traces',
       enabled: config.tracesEndpoint !== undefined,
       endpoint: config.tracesEndpoint,
       protocol: config.tracesProtocol,
-      timeoutMs: config.timeoutMs,
+      timeoutMs: config.tracesTimeoutMs,
     }),
   }
 }
@@ -329,12 +342,12 @@ export function initProviders(config: OtelConfig): ProviderResult {
       ? new GrpcLogExporter({
           url: config.logsEndpoint,
           metadata,
-          timeoutMillis: config.timeoutMs,
+          timeoutMillis: config.logsTimeoutMs,
         })
       : new HttpLogExporter({
           url: config.logsEndpoint,
           headers: hasHeaders ? { ...config.headers } : undefined,
-          timeoutMillis: config.timeoutMs,
+          timeoutMillis: config.logsTimeoutMs,
         })
 
     logProcessors.push(new BatchLogRecordProcessor(logExporter))
@@ -348,7 +361,7 @@ export function initProviders(config: OtelConfig): ProviderResult {
     const traceExporter = new GrpcTraceExporter({
       url: config.tracesEndpoint,
       metadata,
-      timeoutMillis: config.timeoutMs,
+      timeoutMillis: config.tracesTimeoutMs,
     })
     spanProcessors.push(new BatchSpanProcessor(traceExporter))
   }

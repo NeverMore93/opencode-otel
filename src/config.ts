@@ -7,6 +7,8 @@
  *   OTEL_EXPORTER_OTLP_TRACES_ENDPOINT (optional, for session correlation)
  *   OTEL_EXPORTER_OTLP_TRACES_PROTOCOL (validated, gRPC only)
  *   OTEL_EXPORTER_OTLP_TIMEOUT (optional, shared timeout in ms)
+ *   OTEL_EXPORTER_OTLP_LOGS_TIMEOUT (optional, overrides shared timeout for logs)
+ *   OTEL_EXPORTER_OTLP_TRACES_TIMEOUT (optional, overrides shared timeout for traces)
  *   OTEL_SERVICE_NAME (default: "opencode-agent")
  *   OTEL_RESOURCE_ATTRIBUTES
  *   OTEL_EXPORTER_OTLP_HEADERS
@@ -35,7 +37,10 @@ export interface OtelConfig {
   readonly logsProtocol: OtelProtocol
   readonly tracesEndpoint: string | undefined
   readonly tracesProtocol: 'grpc'
-  readonly timeoutMs: number | undefined
+  /** Effective timeout for log exports (ms). Signal-specific value wins over generic. */
+  readonly logsTimeoutMs: number | undefined
+  /** Effective timeout for trace exports (ms). Signal-specific value wins over generic. */
+  readonly tracesTimeoutMs: number | undefined
   readonly serviceName: string
   readonly serviceNameSource: IdentitySource
   readonly explicitResourceAttributes: Readonly<Record<string, string>>
@@ -249,12 +254,28 @@ export async function loadConfig(): Promise<ConfigResult> {
     tracesEndpoint = undefined
   }
 
-  const timeoutMs = parsePositiveInteger(
+  // Timeouts follow OTEL spec: signal-specific (OTEL_EXPORTER_OTLP_LOGS_TIMEOUT
+  // / OTEL_EXPORTER_OTLP_TRACES_TIMEOUT) overrides generic (OTEL_EXPORTER_OTLP_TIMEOUT).
+  const genericTimeoutMs = parsePositiveInteger(
     process.env['OTEL_EXPORTER_OTLP_TIMEOUT'] ??
       getNumericConfigValue(fileConfig?.timeoutMs),
     'OTEL_EXPORTER_OTLP_TIMEOUT',
     warnings,
   )
+  const logsSpecificTimeoutMs = parsePositiveInteger(
+    process.env['OTEL_EXPORTER_OTLP_LOGS_TIMEOUT'] ??
+      getNumericConfigValue(fileConfig?.logsTimeoutMs),
+    'OTEL_EXPORTER_OTLP_LOGS_TIMEOUT',
+    warnings,
+  )
+  const tracesSpecificTimeoutMs = parsePositiveInteger(
+    process.env['OTEL_EXPORTER_OTLP_TRACES_TIMEOUT'] ??
+      getNumericConfigValue(fileConfig?.tracesTimeoutMs),
+    'OTEL_EXPORTER_OTLP_TRACES_TIMEOUT',
+    warnings,
+  )
+  const logsTimeoutMs = logsSpecificTimeoutMs ?? genericTimeoutMs
+  const tracesTimeoutMs = tracesSpecificTimeoutMs ?? genericTimeoutMs
 
   const { value: serviceName, source: serviceNameSource } = getServiceName(fileConfig)
   const explicitResourceAttributes = mergeConfigKeyPairs(
@@ -286,7 +307,8 @@ export async function loadConfig(): Promise<ConfigResult> {
       logsProtocol,
       tracesEndpoint,
       tracesProtocol: DEFAULT_TRACE_PROTOCOL,
-      timeoutMs,
+      logsTimeoutMs,
+      tracesTimeoutMs,
       serviceName,
       serviceNameSource,
       explicitResourceAttributes,
