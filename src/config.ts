@@ -12,6 +12,10 @@
  *   OTEL_SERVICE_NAME (default: "opencode-agent")
  *   OTEL_RESOURCE_ATTRIBUTES
  *   OTEL_EXPORTER_OTLP_HEADERS
+ *
+ * Config file path:
+ *   Default: ~/.config/opencode/plugins/otel.json
+ *   Override: set OTEL_PLUGIN_CONFIG_PATH to an absolute path.
  */
 
 import { homedir, hostname } from 'node:os'
@@ -61,6 +65,11 @@ const DEFAULT_MAX_LINE_LENGTH = 4096
 const VALID_PROTOCOLS = new Set<string>(['grpc', 'http/json'])
 
 function getConfigFilePath(): string {
+  // Testing seam: allow explicit override of the config file path so tests
+  // don't have to rely on mutating HOME / USERPROFILE (which Bun/Node
+  // os.homedir() may not re-read consistently across platforms).
+  const override = process.env['OTEL_PLUGIN_CONFIG_PATH']
+  if (override && override.trim() !== '') return override.trim()
   return join(homedir(), '.config', 'opencode', 'plugins', 'otel.json')
 }
 

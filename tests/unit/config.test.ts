@@ -30,6 +30,7 @@ const ENV_KEYS = [
   'HOSTNAME',
   'HOME',
   'USERPROFILE',
+  'OTEL_PLUGIN_CONFIG_PATH',
   'BAT_TIMEOUT_PLACEHOLDER',
   'BAT_MAX_LINE_LENGTH_PLACEHOLDER',
 ] as const
@@ -46,11 +47,16 @@ async function setTempHome(config: Record<string, unknown> | null = null): Promi
   process.env['HOME'] = homeDir
   process.env['USERPROFILE'] = homeDir
 
+  const configPath = join(homeDir, '.config', 'opencode', 'plugins', 'otel.json')
+  // Always steer loadConfig() at the temp path directly — avoids relying on
+  // os.homedir() re-reading HOME mid-process, which is inconsistent across Bun
+  // on Linux vs Windows.
+  process.env['OTEL_PLUGIN_CONFIG_PATH'] = configPath
+
   if (!config) return
 
-  const configDir = join(homeDir, '.config', 'opencode', 'plugins')
-  await mkdir(configDir, { recursive: true })
-  await writeFile(join(configDir, 'otel.json'), JSON.stringify(config), 'utf8')
+  await mkdir(join(homeDir, '.config', 'opencode', 'plugins'), { recursive: true })
+  await writeFile(configPath, JSON.stringify(config), 'utf8')
 }
 
 afterEach(async () => {

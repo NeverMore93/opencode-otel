@@ -139,6 +139,8 @@ Create `~/.config/opencode/plugins/otel.json`:
 
 Environment variables take precedence over the config file.
 
+Set `OTEL_PLUGIN_CONFIG_PATH` to an absolute path to override the default config file location (useful for multi-tenant deployments or tests).
+
 ## Log Severity Mapping
 
 | Stderr Prefix | OTEL Severity |
