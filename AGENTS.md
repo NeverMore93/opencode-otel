@@ -38,9 +38,9 @@ src/version.ts      ← reads version from package.json at runtime (never hard-c
 
 - **Cannot modify OpenCode source** — integration via npm plugin `event` hook only
 - **Monkey-patch `process.stderr.write`** — interceptor has a recursion guard (`inEmit` flag); if emit callback writes to stderr it is silently skipped
-- **Session tracking uses a module-level Map, not AsyncLocalStorage** — Bun's AsyncLocalStorage is broken; `session.ts` tracks active session via a plain variable
+- **Session tracking uses a module-level Map, not AsyncLocalStorage** — `session.ts` tracks the active session via a plain variable (`activeSessionId`); concurrent session interleaving will mis-tag logs
 - **Trace exporter only supports gRPC** — if a non-gRPC traces protocol is configured, trace export is disabled with a warning
-- **Plugin goes inactive silently** if `OTEL_EXPORTER_OTLP_LOGS_ENDPOINT` is not set (no interceptor installed)
+- **Plugin stays inactive** if `OTEL_EXPORTER_OTLP_LOGS_ENDPOINT` is not set — logs a status message via the app logger but does not install the interceptor
 
 ## Config Precedence
 
