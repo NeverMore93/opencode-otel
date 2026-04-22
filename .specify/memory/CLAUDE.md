@@ -1,10 +1,12 @@
-<claude-mem-context>
-# Recent Activity
+# .specify/memory
 
-### Mar 13, 2026
+## Role
+- Owns generated spec-kit memory and long-lived planning context.
 
-| ID | Time | T | Title | Read |
-|----|------|---|-------|------|
-| #1610 | 10:13 PM | 🟣 | OpenCode property forwarding feature completed and submitted for review | ~1768 |
-| #1605 | 10:03 PM | 🟣 | Feature planning completed for OpenCode property forwarding to observability backends | ~1466 |
-</claude-mem-context>
+## Owns
+- `constitution.md` and other machine-maintained memory inputs.
+- Context snapshots consumed by spec-kit update scripts.
+
+## Avoid
+- Treat files here as tooling state, not product docs.
+- Do not store runtime source rules here when they belong in repo-level instructions.

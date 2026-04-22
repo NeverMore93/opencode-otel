@@ -1,11 +1,11 @@
-<claude-mem-context>
-# Recent Activity
+# tests/unit
 
-### Mar 13, 2026
+## Role
+- Owns fast, deterministic unit tests for modules under `src/`.
 
-| ID | Time | T | Title | Read |
-|----|------|---|-------|------|
-| #1614 | 10:31 PM | 🟣 | PR #12 merged: OpenCode property forwarding to observability backends | ~1032 |
-| #1612 | 10:21 PM | 🔴 | Fixed provider.shutdown() to await properly in resource attribute tests | ~432 |
-| #1610 | 10:13 PM | 🟣 | OpenCode property forwarding feature completed and submitted for review | ~1768 |
-</claude-mem-context>
+## Owns
+- Module-level behavior checks for config parsing, interception, provider setup, and session-safe changes.
+
+## Avoid
+- Do not turn these tests into integration or e2e suites.
+- Prefer direct behavior assertions over duplicating implementation details.
