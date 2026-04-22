@@ -1,10 +1,12 @@
-<claude-mem-context>
-# Recent Activity
+# .specify/scripts/powershell
 
-### Mar 13, 2026
+## Role
+- Owns PowerShell implementations of spec-kit setup and agent-context update flows.
 
-| ID | Time | T | Title | Read |
-|----|------|---|-------|------|
-| #1610 | 10:13 PM | 🟣 | OpenCode property forwarding feature completed and submitted for review | ~1768 |
-| #1605 | 10:03 PM | 🟣 | Feature planning completed for OpenCode property forwarding to observability backends | ~1466 |
-</claude-mem-context>
+## Owns
+- Feature bootstrap scripts.
+- Shared PowerShell helpers and repo-context update scripts.
+
+## Avoid
+- Preserve compatibility with generated root agent-context files.
+- Do not add repo product behavior here beyond scaffolding support.

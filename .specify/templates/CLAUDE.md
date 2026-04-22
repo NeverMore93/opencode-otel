@@ -1,10 +1,11 @@
-<claude-mem-context>
-# Recent Activity
+# .specify/templates
 
-### Mar 13, 2026
+## Role
+- Owns reusable markdown templates that seed future spec, plan, task, and agent-context artifacts.
 
-| ID | Time | T | Title | Read |
-|----|------|---|-------|------|
-| #1610 | 10:13 PM | 🟣 | OpenCode property forwarding feature completed and submitted for review | ~1768 |
-| #1605 | 10:03 PM | 🟣 | Feature planning completed for OpenCode property forwarding to observability backends | ~1466 |
-</claude-mem-context>
+## Owns
+- Template structure, placeholders, and generated-file boilerplate.
+
+## Avoid
+- Template changes affect future generated files, not current source directly.
+- Keep templates generic; do not hard-code one-off feature decisions here.

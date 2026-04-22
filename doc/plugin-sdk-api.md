@@ -1,0 +1,1 @@
+D:/openSource/opencode/docs/plugin-sdk-api.md

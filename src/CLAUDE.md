@@ -1,10 +1,15 @@
-<claude-mem-context>
-# Recent Activity
+# src
 
-### Mar 13, 2026
+## Role
+- Owns the shipped plugin runtime and OTEL integration logic.
 
-| ID | Time | T | Title | Read |
-|----|------|---|-------|------|
-| #1614 | 10:31 PM | 🟣 | PR #12 merged: OpenCode property forwarding to observability backends | ~1032 |
-| #1610 | 10:13 PM | 🟣 | OpenCode property forwarding feature completed and submitted for review | ~1768 |
-</claude-mem-context>
+## Owns
+- Plugin entry, config parsing, exporter/provider wiring, stderr interception, session state, and shutdown flow.
+
+## Boundaries
+- Keep `index.ts` orchestration-only.
+- Keep config parsing in `config.ts`, transport wiring in `provider.ts`, and stderr interception in `interceptor.ts`.
+
+## Avoid
+- Do not place tests, workflow automation, or planning artifacts here.
+- Do not let one module absorb another module's responsibility just to avoid a new file.
