@@ -121,7 +121,7 @@ Strong success criteria let you loop independently. Weak criteria ("make it work
 
 - **Cannot modify OpenCode source code** — integration via npm plugin mechanism only
 - **Monkey-patch `process.stderr.write`** — interceptor has a recursion guard (`inEmit` flag); if emit callback writes to stderr it is silently skipped
-- **gRPC primary, HTTP fallback** — traces exporter only supports gRPC; non-gRPC traces protocol disables trace export with a warning
+- **Protocol support** — Logs support gRPC (primary) and HTTP fallback; Traces only support gRPC (non-gRPC protocol disables trace export with a warning)
 - **Uses `event` hook for session lifecycle tracking** (`session.created`/`idle`/`deleted`) — creates root spans per session so all logs share the same traceId
 - **Session tracking uses a module-level Map, not AsyncLocalStorage** — `activeSessionId` is a plain variable; concurrent session interleaving will mis-tag logs
 - **Plugin stays inactive** if `OTEL_EXPORTER_OTLP_LOGS_ENDPOINT` is not set — logs a status message but does not install the interceptor
