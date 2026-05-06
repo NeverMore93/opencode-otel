@@ -1,6 +1,46 @@
 # CLAUDE.md
 
-Behavioral guidelines to reduce common LLM coding mistakes. Merge with project-specific instructions as needed.
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+## Commands
+
+| Task | Command |
+|------|---------|
+| Install deps | `bun install` |
+| Run all tests | `bun test` |
+| Run a single test file | `bun test tests/unit/config.test.ts` |
+| Run tests matching a pattern | `bun test --test-name-pattern "signal-specific"` |
+| Build (ESM + DTS) | `bun run build` |
+| Build before publish | `bun run prepublishOnly` (runs build automatically) |
+
+No linter is configured. Build validation via `tsc` is handled by tsup during `bun run build`.
+
+## Architecture
+
+```text
+Plugin Entry (src/index.ts) — orchestration only, wires modules together
+  ├─ Config (src/config.ts)        ← env vars + otel.json file, precedence: env > file > defaults
+  ├─ Provider (src/provider.ts)    ← LoggerProvider + TracerProvider, BAT resource resolution, gRPC/HTTP exporters
+  ├─ Interceptor (src/interceptor.ts) ← monkey-patch process.stderr.write, line buffering, severity parsing
+  ├─ Session (src/session.ts)      ← Map<sessionID, Span>, trace context per session
+  ├─ Shutdown (src/shutdown.ts)    ← graceful flush on beforeExit/SIGTERM/SIGINT (5s timeout)
+  └─ Version (src/version.ts)      ← reads package.json version at runtime (not hard-coded)
+```
+
+**Data flow:** stderr write → interceptor (line buffer + severity parse) → logger.emit() with active session trace context → BatchLogRecordProcessor → OTLP exporter.
+
+**Session correlation:** The `event` hook tracks `session.created`/`idle`/`deleted` events. Each session gets a root span; all logs emitted during that session share the same `traceId`.
+
+## Tests
+
+Tests live in `tests/unit/` using `bun:test`. Three test files cover the core modules:
+- `config.test.ts` — env var parsing, config file merging, timeout precedence, header/resource attribute decoding, `${ENV_VAR}` placeholder resolution in otel.json
+- `interceptor.test.ts` — line buffering, severity parsing, stderr preservation, flush/uninstall
+- `provider.test.ts` — signal routes, resource attribute resolution (BAT identity backfill, service name precedence), provider initialization
+
+Tests manipulate `process.env` directly and use temp directories for config files (via `OTEL_PLUGIN_CONFIG_PATH`). No mocking library. See test files for helper conventions.
+
+## Behavioral Guidelines
 
 **Tradeoff:** These guidelines bias toward caution over speed. For trivial tasks, use judgment.
 
@@ -64,9 +104,7 @@ Strong success criteria let you loop independently. Weak criteria ("make it work
 
 **These guidelines are working if:** fewer unnecessary changes in diffs, fewer rewrites due to overcomplication, and clarifying questions come before implementation rather than after mistakes.
 
-## Project-Specific Guidelines
-
-### What This Project Is
+## What This Project Is
 
 **opencode-otel** — an OpenCode npm plugin that forwards runtime stderr logs to any OTLP-compatible log collector via gRPC or HTTP. Business events (traces/spans) are handled by opencode-plugin-langfuse.
 
@@ -82,20 +120,13 @@ Strong success criteria let you loop independently. Weak criteria ("make it work
 ### Key Constraints
 
 - **Cannot modify OpenCode source code** — integration via npm plugin mechanism only
-- **Monkey-patch `process.stderr.write`** — runtime interception of log output (JS dynamic proxy pattern)
-- **gRPC primary, HTTP fallback** — company TripLog collector only accepts gRPC on :8080
+- **Monkey-patch `process.stderr.write`** — interceptor has a recursion guard (`inEmit` flag); if emit callback writes to stderr it is silently skipped
+- **gRPC primary, HTTP fallback** — traces exporter only supports gRPC; non-gRPC traces protocol disables trace export with a warning
 - **Uses `event` hook for session lifecycle tracking** (`session.created`/`idle`/`deleted`) — creates root spans per session so all logs share the same traceId
+- **Session tracking uses a module-level Map, not AsyncLocalStorage** — `activeSessionId` is a plain variable; concurrent session interleaving will mis-tag logs
+- **Plugin stays inactive** if `OTEL_EXPORTER_OTLP_LOGS_ENDPOINT` is not set — logs a status message but does not install the interceptor
 - **No business traces/spans** — business events handled by opencode-plugin-langfuse
-
-### Architecture
-
-```text
-Plugin Entry (src/index.ts)
-  ├─ Config (src/config.ts) ← env vars + optional config file
-  ├─ Log Provider (src/provider.ts) ← LoggerProvider + BatchLogRecordProcessor + gRPC/HTTP exporter
-  ├─ Interceptor (src/interceptor.ts) ← monkey-patch process.stderr.write, line buffering, severity parsing
-  └─ Shutdown (src/shutdown.ts) ← graceful flush on process exit
-```
+- **Version-first change policy** — any code/config change MUST bump `version` in `package.json` first (semver), implement, then sync `README.md`. See `specs/constitution.md`.
 
 ### Configuration
 
@@ -105,10 +136,25 @@ Plugin Entry (src/index.ts)
 | `OTEL_EXPORTER_OTLP_LOGS_PROTOCOL` | `grpc` | Protocol: `grpc` or `http/json` |
 | `OTEL_SERVICE_NAME` | `opencode-agent` | service.name resource attribute |
 | `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` | — | Traces endpoint (optional, for session span export) |
+| `OTEL_EXPORTER_OTLP_TRACES_PROTOCOL` | `grpc` | Trace protocol; only `grpc` is supported |
+| `OTEL_EXPORTER_OTLP_TIMEOUT` | — | Shared OTLP timeout in ms; signal-specific overrides win |
+| `OTEL_EXPORTER_OTLP_LOGS_TIMEOUT` | — | Log-specific timeout in ms (overrides shared) |
+| `OTEL_EXPORTER_OTLP_TRACES_TIMEOUT` | — | Trace-specific timeout in ms (overrides shared) |
 | `OTEL_RESOURCE_ATTRIBUTES` | — | Additional resource attributes (auto-parsed by SDK) |
+| `OTEL_EXPORTER_OTLP_HEADERS` | — | Comma-separated `key=value` auth headers |
+| `OTEL_PLUGIN_CONFIG_PATH` | — | Override default config file path (absolute path) |
+| `OTEL_MAX_LINE_LENGTH` | `4096` | Max stderr line length before truncation |
+
+**Config file**: `~/.config/opencode/plugins/otel.json` (override with `OTEL_PLUGIN_CONFIG_PATH`). Supports `${ENV_VAR}` placeholders in string values. Env vars always win over config file values.
+
+**Timeout precedence** (per OTEL spec): `OTEL_EXPORTER_OTLP_LOGS_TIMEOUT` > `OTEL_EXPORTER_OTLP_TIMEOUT` for logs; `OTEL_EXPORTER_OTLP_TRACES_TIMEOUT` > `OTEL_EXPORTER_OTLP_TIMEOUT` for traces.
+
+**service.name precedence**: `OTEL_SERVICE_NAME` > `OTEL_RESOURCE_ATTRIBUTES[service.name]` > `otel.json serviceName` > `PAAS_APP_APPID` > default `"opencode-agent"`. When inputs disagree, the higher-priority source wins and a warning is emitted.
 
 ### Design Documents
 
 All specs are in `specs/` directory:
-- `constitution.md` — project constitution and principles
-- Feature specs in `specs/010-stderr-log-forwarder/`
+- `constitution.md` — project constitution and principles (governance, quality standards, version-first change policy)
+- `contracts/` — plugin hook and OTEL export contracts
+- `data-model.md` — data model definitions
+- Feature specs in numbered directories (e.g. `specs/001-add-gitignore/`)
