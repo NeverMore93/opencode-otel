@@ -1,6 +1,6 @@
 {
   "name": "opencode-otel",
-  "version": "1.2.1",
+  "version": "1.3.0",
   "description": "OpenCode plugin — forwards runtime stderr logs to any OTLP-compatible log collector via gRPC or HTTP",
   "type": "module",
   "main": "dist/index.js",
@@ -44,7 +44,7 @@
     "typescript": "^5.5.0"
   },
   "peerDependencies": {
-    "@opencode-ai/plugin": ">=1.1.0"
+    "@opencode-ai/plugin": ">=1.3.4"
   },
   "dependencies": {
     "@opentelemetry/api": "^1.9.0",

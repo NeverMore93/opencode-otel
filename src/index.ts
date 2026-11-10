@@ -34,7 +34,7 @@ function safeHost(endpoint: string | undefined): string {
   }
 }
 
-export default async function plugin(ctx: PluginContext) {
+async function server(ctx: PluginContext) {
   const log = (level: 'info' | 'error') => async (message: string) => {
     try {
       await ctx.client.app.log({
@@ -131,4 +131,13 @@ export default async function plugin(ctx: PluginContext) {
     await logError(`Plugin initialization failed: ${message}`)
     return {}
   }
+}
+
+// One default export for both OpenCode majors: OpenCode 2 reads `id` + `setup`,
+// OpenCode 1.x (>= 1.3.4) reads `server`. OpenCode 2 exports its own logs and
+// traces natively via OTEL_EXPORTER_OTLP_ENDPOINT, so `setup` is a no-op there.
+export default {
+  id: PLUGIN_NAME,
+  setup(_ctx: unknown): void {},
+  server,
 }

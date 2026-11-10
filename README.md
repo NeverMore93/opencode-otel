@@ -21,6 +21,11 @@ The plugin monkey-patches `process.stderr.write` at initialization. Each complet
 
 Original stderr output is preserved exactly as-is.
 
+## Compatibility
+
+- **OpenCode 1.x (>= 1.3.4)**: full behaviour as described here.
+- **OpenCode 2**: the plugin loads, but does nothing. OpenCode 2 exports its own logs and traces over OTLP/HTTP when `OTEL_EXPORTER_OTLP_ENDPOINT` is set (and `OTEL_EXPORTER_OTLP_HEADERS` for auth headers).
+
 ## Quick Start
 
 ### 1. Enable the plugin in OpenCode
